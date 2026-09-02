@@ -19,19 +19,19 @@ Spec requested Next.js App Router + Route Handlers. The environment runs React (
 - Backend: full mock API in `/app/backend/server.py` (in-memory stores, fixed OTP 123456, stage-based SMS templates, status advance/jump with clamping)
 - Frontend: Home landing, OnboardingModal (form + OTP), Booking wizard (/agendar) with MiniCalendar + time slots + sticky summary bar, Tracking (/rastreio/:id) with animated stepper, SMS feed tab, DevControlBar
 - Testing: 10/10 backend pytest + full E2E Playwright pass (iteration_1.json, 100% success)
-- Admin dashboard (/admin): GET /api/admin/overview (KPIs: em manutenção, aguardando, prontos, mecânicos disponíveis X/Y, serviços agendados), vehicle cards with advance/regress stage (fires simulated SMS toast), mechanics team with availability toggle (POST /api/admin/mechanics/{id}/toggle), services agenda with count + average duration; seed_demo() spawns 6 demo appointments (AF-DEMO01..06) + 5 mechanics on empty store; navbar 'Painel Oficina' link
-- Testing iteration_2.json: admin feature 100% backend (5 pytest) + frontend E2E
+- Admin dashboard (/admin): protegido por login (POST /api/admin/login, Bearer token em memória; guard `require_admin` em overview/toggle; POST /api/admin/logout invalida token). Credenciais fixas no código: usuário `admin` (ou e-mail `monitor.informatica25@gmail.com`) / senha `admin@2043`. Frontend: tela de login (localStorage `autofix_admin`), botão 'Sair do painel', 401 redireciona ao login.
+- Admin overview: GET /api/admin/overview (KPIs: em manutenção, aguardando, prontos, mecânicos disponíveis X/Y, serviços agendados), vehicle cards com advance/regress (SMS simulado), equipe com toggle (POST /api/admin/mechanics/{id}/toggle), agenda de serviços; seed_demo() com 6 agendamentos (AF-DEMO01..06) + 5 mecânicos; navbar 'Painel Oficina'
+- Testing: iteration_2.json (admin 100%), iteration_3.json (admin auth 16/16 pytest + E2E, regressão pública OK)
 
 ## Known Limitations
-- In-memory store resets on backend restart (per spec mock strategy)
+- In-memory store resets on backend restart (per spec mock strategy); tokens admin também são invalidados no restart
 - SMS is intentionally simulated (toast + per-order SMS log)
-- Brand/model selects use native <select> elements
-- Admin panel has no auth guard (demo panel — needs protection for production)
+- Credenciais admin fixas no código por decisão do usuário — para produção mover para env vars + hash
 
 ## Backlog
-- P0: Auth guard for /admin (admin login)
-- P1: Persist appointments in MongoDB; login (returning user) flow using stored password; assign mechanics to service orders
-- P2: Multiple vehicles per user; real SMS via Twilio; appointment cancellation/rescheduling; workload/capacity indicators per mechanic
+- P0: (resolvido) Auth guard para /admin
+- P1: Persist appointments in MongoDB; login (returning user) flow usando senha do cliente; assign mechanics to service orders
+- P2: Multiple vehicles per user; real SMS via Twilio; appointment cancellation/rescheduling; capacity indicators per mechanic
 
 ## Next Tasks
-- Await user review; then consider admin auth + persistence + real notifications
+- Await user review; considerar persistência MongoDB + SMS real

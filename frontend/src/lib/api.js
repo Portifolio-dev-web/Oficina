@@ -25,8 +25,16 @@ export const updateStage = (id, stage) =>
     .post(`${API}/tracking/${id}/status`, stage === undefined ? {} : { stage })
     .then((r) => r.data);
 
-export const getAdminOverview = () =>
-  axios.get(`${API}/admin/overview`).then((r) => r.data);
+const authHeaders = (token) => ({ headers: { Authorization: `Bearer ${token}` } });
 
-export const toggleMechanic = (id) =>
-  axios.post(`${API}/admin/mechanics/${id}/toggle`).then((r) => r.data);
+export const adminLogin = (payload) =>
+  axios.post(`${API}/admin/login`, payload).then((r) => r.data);
+
+export const adminLogout = (token) =>
+  axios.post(`${API}/admin/logout`, {}, authHeaders(token)).then((r) => r.data);
+
+export const getAdminOverview = (token) =>
+  axios.get(`${API}/admin/overview`, authHeaders(token)).then((r) => r.data);
+
+export const toggleMechanic = (id, token) =>
+  axios.post(`${API}/admin/mechanics/${id}/toggle`, {}, authHeaders(token)).then((r) => r.data);

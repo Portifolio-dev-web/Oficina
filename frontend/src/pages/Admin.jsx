@@ -3,21 +3,62 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Loader2, Car, Clock, CheckCircle2, Users, Wrench, ChevronLeft, ChevronRight,
-  MessageSquareText, CalendarDays, ClipboardList,
+  MessageSquareText, CalendarDays, ClipboardList, Lock, LogOut,
 } from "lucide-react";
 import { toast } from "sonner";
-import { getAdminOverview, toggleMechanic, updateStage } from "@/lib/api";
+import { getAdminOverview, toggleMechanic, updateStage, adminLogin, adminLogout } from "@/lib/api";
 import { STAGES, formatBRL } from "@/constants/data";
 import StatusBadge from "@/components/StatusBadge";
 
 const stageTone = (i) => (i === 0 ? "sky" : i === 4 ? "emerald" : "amber");
 
+const inputCls =
+  "w-full rounded-xl border border-slate-700 bg-slate-900/70 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 outline-none transition-colors focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20";
+
 export default function Admin() {
+  const [token, setToken] = useState(() => localStorage.getItem("autofix_admin") || "");
   const [data, setData] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [loginForm, setLoginForm] = useState({ username: "", password: "" });
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
 
-  const load = useCallback(() => getAdminOverview().then(setData).catch(() => {}), []);
+  const logout = useCallback(async () => {
+    await adminLogout(token).catch(() => {});
+    localStorage.removeItem("autofix_admin");
+    setToken("");
+    setData(null);
+  }, [token]);
+
+  const load = useCallback(() => {
+    if (!token) return;
+    getAdminOverview(token)
+      .then(setData)
+      .catch((e) => {
+        if (e.response?.status === 401) {
+          localStorage.removeItem("autofix_admin");
+          setToken("");
+        }
+      });
+  }, [token]);
+
   useEffect(() => { load(); }, [load]);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoginLoading(true);
+    setLoginError("");
+    try {
+      const res = await adminLogin(loginForm);
+      localStorage.setItem("autofix_admin", res.token);
+      setToken(res.token);
+      toast.success(`Bem-vindo, ${res.user.name}!`);
+    } catch (err) {
+      setLoginError(err.response?.data?.detail || "Falha ao entrar. Tente novamente.");
+    } finally {
+      setLoginLoading(false);
+    }
+  };
 
   const changeStage = async (appt, stage) => {
     setBusyId(appt.id);
@@ -39,9 +80,80 @@ export default function Admin() {
   };
 
   const handleToggleMechanic = async (m) => {
-    await toggleMechanic(m.id).catch(() => {});
-    load();
+    try {
+      await toggleMechanic(m.id, token);
+      load();
+    } catch (e) {
+      if (e.response?.status === 401) {
+        localStorage.removeItem("autofix_admin");
+        setToken("");
+      }
+    }
   };
+
+  if (!token) {
+    return (
+      <main className="mx-auto flex max-w-md flex-col items-center px-4 py-24">
+        <motion.form
+          data-testid="admin-login-form"
+          onSubmit={handleLogin}
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full rounded-2xl border border-slate-700 bg-slate-800/60 p-8"
+        >
+          <span className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-400">
+            <Lock className="h-7 w-7" />
+          </span>
+          <h1 className="text-center font-display text-2xl font-bold">Acesso restrito</h1>
+          <p className="mb-6 mt-2 text-center text-xs leading-relaxed text-slate-400">
+            Painel exclusivo da equipe AutoFix Pro. Informe suas credenciais de administrador.
+          </p>
+          <div className="space-y-4">
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-slate-400">Usuário</label>
+              <input
+                data-testid="input-admin-username"
+                className={inputCls}
+                placeholder="admin"
+                autoComplete="username"
+                value={loginForm.username}
+                onChange={(e) => setLoginForm((f) => ({ ...f, username: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-slate-400">Senha</label>
+              <input
+                data-testid="input-admin-password"
+                type="password"
+                className={inputCls}
+                placeholder="••••••••"
+                autoComplete="current-password"
+                value={loginForm.password}
+                onChange={(e) => setLoginForm((f) => ({ ...f, password: e.target.value }))}
+              />
+            </div>
+            {loginError && (
+              <p
+                data-testid="admin-login-error"
+                className="rounded-lg border border-red-800 bg-red-950/50 px-3 py-2 text-xs font-semibold text-red-300"
+              >
+                {loginError}
+              </p>
+            )}
+            <button
+              data-testid="btn-admin-login"
+              type="submit"
+              disabled={loginLoading || !loginForm.username || !loginForm.password}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 py-3.5 text-sm font-bold text-slate-950 transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {loginLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+              Entrar no painel
+            </button>
+          </div>
+        </motion.form>
+      </main>
+    );
+  }
 
   if (!data) {
     return (
@@ -62,11 +174,20 @@ export default function Admin() {
 
   return (
     <main data-testid="admin-dashboard" className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-        <h1 className="font-display text-3xl font-extrabold tracking-tight md:text-4xl">Painel da Oficina</h1>
-        <p className="mt-2 text-sm text-slate-400">
-          Gerencie os veículos, atualize etapas (com envio automático de SMS) e acompanhe a equipe.
-        </p>
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-3xl font-extrabold tracking-tight md:text-4xl">Painel da Oficina</h1>
+          <p className="mt-2 text-sm text-slate-400">
+            Gerencie os veículos, atualize etapas (com envio automático de SMS) e acompanhe a equipe.
+          </p>
+        </div>
+        <button
+          data-testid="btn-admin-logout"
+          onClick={logout}
+          className="flex items-center gap-2 rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 transition-colors hover:border-red-500/60 hover:text-red-300"
+        >
+          <LogOut className="h-3.5 w-3.5" /> Sair do painel
+        </button>
       </motion.div>
 
       <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">

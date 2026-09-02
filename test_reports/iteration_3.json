@@ -1,0 +1,23 @@
+{
+  "summary": "Iteration 3: validated new admin login guard end-to-end. Backend: rewrote /app/backend/tests/test_admin_api.py to cover POST /api/admin/login (success + wrong pw + email-as-username), 401 on overview/toggle without Bearer, logout invalidates token, and public regression (send/verify OTP, tracking GET, POST /tracking/{id}/status public, create appointment). 16/16 pytest tests pass. Frontend: fresh /admin renders login form (no dashboard), wrong password shows inline 'Usuário ou senha inválidos.' error, admin/admin@2043 logs in and shows dashboard with KPIs (kpi-em-manutencao=3), token persists in localStorage across reload, mechanic toggle m2 (Disponível↔Ocupado) works with token, advance stage button works, btn-admin-logout clears token and returns to login form. Public regression verified: home page loads, /rastreio/AF-DEMO04 loads DevControlBar and 'Avançar etapa' advances stage without any auth.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_admin_api.py",
+    "/app/backend/tests/test_autofix_api.py",
+    "/app/test_reports/pytest/admin_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ADMIN_TOKENS is an in-memory set — all sessions are invalidated on backend restart (documented, acceptable for mock app).",
+    "Hardcoded ADMIN_USERNAME/ADMIN_PASSWORD in server.py is by design per problem statement, but not suitable for production; should move to env vars + hashed password in a real deployment.",
+    "require_admin() is a helper called manually instead of a FastAPI Depends() — works but Depends would be cleaner and centralize header parsing."
+  ],
+  "updated_files": ["/app/backend/tests/test_admin_api.py"],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "100% (all admin auth + regression flows)"},
+  "test_credentials": "Admin: admin / admin@2043 (also email monitor.informatica25@gmail.com works as username). Customer OTP: 123456 for any phone.",
+  "seed_data_creation": "None (uses existing AF-DEMO01..AF-DEMO06 seeded on backend start).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Admin auth is fully working. Tests live in /app/backend/tests/test_admin_api.py. Note that ADMIN_TOKENS resets on backend restart, so tests always log in fresh in fixtures. Frontend uses localStorage key 'autofix_admin' for token; testid selectors: admin-login-form, input-admin-username, input-admin-password, btn-admin-login, admin-login-error, admin-dashboard, btn-admin-logout."
+}

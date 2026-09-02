@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Header
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 import os
@@ -265,8 +265,45 @@ async def update_status(appointment_id: str, body: Optional[StatusUpdate] = None
     return appt
 
 
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "admin@2043"
+ADMIN_EMAIL = "monitor.informatica25@gmail.com"
+ADMIN_TOKENS = set()
+
+
+class AdminLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+def require_admin(authorization):
+    if not authorization or not authorization.startswith("Bearer ") or authorization[7:] not in ADMIN_TOKENS:
+        raise HTTPException(status_code=401, detail="Acesso restrito ao administrador.")
+
+
+@api_router.post("/admin/login")
+async def admin_login(body: AdminLoginRequest):
+    if body.username not in (ADMIN_USERNAME, ADMIN_EMAIL) or body.password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Usuário ou senha inválidos.")
+    token = f"admin-{uuid.uuid4().hex}"
+    ADMIN_TOKENS.add(token)
+    return {
+        "success": True,
+        "token": token,
+        "user": {"username": ADMIN_USERNAME, "name": "Administrador", "email": ADMIN_EMAIL},
+    }
+
+
+@api_router.post("/admin/logout")
+async def admin_logout(authorization: Optional[str] = Header(None)):
+    if authorization and authorization.startswith("Bearer "):
+        ADMIN_TOKENS.discard(authorization[7:])
+    return {"success": True}
+
+
 @api_router.get("/admin/overview")
-async def admin_overview():
+async def admin_overview(authorization: Optional[str] = Header(None)):
+    require_admin(authorization)
     appts = sorted(APPOINTMENTS.values(), key=lambda a: a["createdAt"], reverse=True)
     stats = {
         "total": len(appts),
@@ -290,7 +327,8 @@ async def admin_overview():
 
 
 @api_router.post("/admin/mechanics/{mechanic_id}/toggle")
-async def toggle_mechanic(mechanic_id: str):
+async def toggle_mechanic(mechanic_id: str, authorization: Optional[str] = Header(None)):
+    require_admin(authorization)
     for m in MECHANICS:
         if m["id"] == mechanic_id:
             m["available"] = not m["available"]
