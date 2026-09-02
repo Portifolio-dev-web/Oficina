@@ -24,3 +24,9 @@ export const updateStage = (id, stage) =>
   axios
     .post(`${API}/tracking/${id}/status`, stage === undefined ? {} : { stage })
     .then((r) => r.data);
+
+export const getAdminOverview = () =>
+  axios.get(`${API}/admin/overview`).then((r) => r.data);
+
+export const toggleMechanic = (id) =>
+  axios.post(`${API}/admin/mechanics/${id}/toggle`).then((r) => r.data);

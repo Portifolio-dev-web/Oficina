@@ -1,5 +1,5 @@
 import { useNavigate, Link } from "react-router-dom";
-import { Wrench, LogOut, CalendarPlus } from "lucide-react";
+import { Wrench, LogOut, CalendarPlus, LayoutDashboard } from "lucide-react";
 import { useSession } from "@/lib/session";
 
 export default function Navbar() {
@@ -19,6 +19,14 @@ export default function Navbar() {
         </Link>
 
         <div className="flex items-center gap-3">
+          <Link
+            to="/admin"
+            data-testid="nav-admin-link"
+            className="flex items-center gap-1.5 rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 transition-colors hover:border-amber-500/60 hover:text-amber-300"
+          >
+            <LayoutDashboard className="h-3.5 w-3.5" />
+            Painel Oficina
+          </Link>
           {session ? (
             <>
               <span className="hidden text-sm text-slate-400 sm:block">

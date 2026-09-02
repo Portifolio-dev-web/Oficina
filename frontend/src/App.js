@@ -6,6 +6,7 @@ import OnboardingModal from "@/components/OnboardingModal";
 import Home from "@/pages/Home";
 import Booking from "@/pages/Booking";
 import Tracking from "@/pages/Tracking";
+import Admin from "@/pages/Admin";
 import { SessionContext, getSession, saveSession, clearSession } from "@/lib/session";
 
 function Shell() {
@@ -34,6 +35,7 @@ function Shell() {
           <Route path="/" element={<Home />} />
           <Route path="/agendar" element={<Booking />} />
           <Route path="/rastreio/:id" element={<Tracking />} />
+          <Route path="/admin" element={<Admin />} />
         </Routes>
         <OnboardingModal
           open={onboardingOpen}

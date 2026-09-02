@@ -8,7 +8,7 @@ import hashlib
 from pathlib import Path
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -76,6 +76,60 @@ def stage_sms(appt, stage):
     if stage == 3:
         return f"Seu {carro} está em teste de rodagem e controle de qualidade."
     return f"Tudo pronto! Seu {carro} está disponível para retirada. Obrigado pela preferência!"
+
+
+MECHANICS = [
+    {"id": "m1", "name": "Carlos Souza", "specialty": "Motor e transmissão", "available": True},
+    {"id": "m2", "name": "Rafael Lima", "specialty": "Freios e suspensão", "available": True},
+    {"id": "m3", "name": "Bruno Alves", "specialty": "Elétrica e diagnóstico", "available": False},
+    {"id": "m4", "name": "Diego Ferreira", "specialty": "Climatização", "available": True},
+    {"id": "m5", "name": "André Santos", "specialty": "Revisão geral", "available": False},
+]
+
+
+def seed_demo():
+    if APPOINTMENTS:
+        return
+    base = datetime.now(timezone.utc).date()
+
+    def d(offset):
+        return (base + timedelta(days=offset)).isoformat()
+
+    demo = [
+        {"name": "Maria Silva", "phone": "(11) 99999-8888", "vehicle": {"make": "Chevrolet", "model": "Onix", "plate": "ABC1D23"},
+         "services": [{"id": "troca-oleo", "name": "Troca de óleo e filtros", "price": 189, "duration": "45 min"}], "date": d(0), "time": "09:00", "period": "Manhã", "stage": 2},
+        {"name": "João Pereira", "phone": "(11) 98888-7777", "vehicle": {"make": "Toyota", "model": "Corolla", "plate": "BRA2E19"},
+         "services": [{"id": "freios", "name": "Sistema de freios", "price": 459, "duration": "1 h 30"}], "date": d(0), "time": "10:00", "period": "Manhã", "stage": 1},
+        {"name": "Ana Costa", "phone": "(21) 97777-6666", "vehicle": {"make": "Volkswagen", "model": "T-Cross", "plate": "FZX4A72"},
+         "services": [{"id": "diag-eletronico", "name": "Diagnóstico eletrônico", "price": 149, "duration": "40 min"}], "date": d(0), "time": "08:00", "period": "Manhã", "stage": 3},
+        {"name": "Pedro Santos", "phone": "(31) 96666-5555", "vehicle": {"make": "Fiat", "model": "Toro", "plate": "GHI3K45"},
+         "services": [{"id": "revisao-periodica", "name": "Revisão periódica", "price": 399, "duration": "2 h"}], "date": d(1), "time": "14:00", "period": "Tarde", "stage": 0},
+        {"name": "Lúcia Mendes", "phone": "(41) 95555-4444", "vehicle": {"make": "Honda", "model": "HR-V", "plate": "JKL7M88"},
+         "services": [{"id": "climatizacao", "name": "Climatização", "price": 349, "duration": "1 h 20"}], "date": d(0), "time": "11:00", "period": "Manhã", "stage": 4},
+        {"name": "Marcos Rocha", "phone": "(51) 94444-3333", "vehicle": {"make": "Hyundai", "model": "Creta", "plate": "MNO9P12"},
+         "services": [{"id": "alinhamento", "name": "Alinhamento e balanceamento", "price": 159, "duration": "50 min"}], "date": d(1), "time": "15:00", "period": "Tarde", "stage": 0},
+    ]
+    for i, item in enumerate(demo):
+        appt_id = f"AF-DEMO{i + 1:02d}"
+        appt = {
+            "id": appt_id,
+            "user": {"name": item["name"], "phone": item["phone"]},
+            "vehicle": item["vehicle"],
+            "services": item["services"],
+            "date": item["date"],
+            "time": item["time"],
+            "period": item["period"],
+            "statusIndex": item["stage"],
+            "status": STAGES[item["stage"]],
+            "createdAt": now_iso(),
+            "smsLogs": [],
+        }
+        for st in range(item["stage"] + 1):
+            appt["smsLogs"].append(sms_entry(stage_sms(appt, st)))
+        APPOINTMENTS[appt_id] = appt
+
+
+seed_demo()
 
 
 # ---------------------------------------------------------------------------
@@ -209,6 +263,39 @@ async def update_status(appointment_id: str, body: Optional[StatusUpdate] = None
         appt["smsLogs"].append(sms_entry(stage_sms(appt, new_stage)))
         logging.info(f"[Simulação SMS] {appt['smsLogs'][-1]['message']}")
     return appt
+
+
+@api_router.get("/admin/overview")
+async def admin_overview():
+    appts = sorted(APPOINTMENTS.values(), key=lambda a: a["createdAt"], reverse=True)
+    stats = {
+        "total": len(appts),
+        "emManutencao": sum(1 for a in appts if 1 <= a["statusIndex"] <= 3),
+        "aguardando": sum(1 for a in appts if a["statusIndex"] == 0),
+        "prontos": sum(1 for a in appts if a["statusIndex"] == len(STAGES) - 1),
+        "mecanicosDisponiveis": sum(1 for m in MECHANICS if m["available"]),
+        "mecanicosTotal": len(MECHANICS),
+    }
+    servicos = {}
+    for a in appts:
+        for s in a["services"]:
+            entry = servicos.setdefault(s["name"], {"name": s["name"], "count": 0, "duration": s.get("duration", "")})
+            entry["count"] += 1
+    return {
+        "stats": stats,
+        "appointments": appts,
+        "mechanics": MECHANICS,
+        "services": list(servicos.values()),
+    }
+
+
+@api_router.post("/admin/mechanics/{mechanic_id}/toggle")
+async def toggle_mechanic(mechanic_id: str):
+    for m in MECHANICS:
+        if m["id"] == mechanic_id:
+            m["available"] = not m["available"]
+            return m
+    raise HTTPException(status_code=404, detail="Mecânico não encontrado.")
 
 
 app.include_router(api_router)
