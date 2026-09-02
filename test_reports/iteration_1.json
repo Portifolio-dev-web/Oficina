@@ -1,0 +1,23 @@
+{
+  "summary": "First test round for AutoFix Pro. Backend: 10/10 pytest tests pass (auth OTP, vehicles, appointments, tracking status advance/jump/clamp). Frontend E2E: full flow works — onboarding modal (name/phone mask '(11) 99999-8888'/password/brand/model), OTP 6-digit auto-advance with 123456, redirect to /agendar, service selection updates summary bar (R$ 438 with 2 items), calendar pick + Manhã slot + time button, confirm creates AF-XXXXXX and redirects to /rastreio/:id. Tracking shows 5-stage stepper, vehicle/datetime/services cards populated, SMS feed shows confirmation. DevControlBar advance/regress/reset all work and produce SMS entries (7 entries observed after full demo cycle). Invalid /rastreio/AF-XXXXXX shows 'Agendamento não encontrado'.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_autofix_api.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "data-testid names in review_request did not match code (e.g. request specified 'input-phone'/'select-make'/'select-model' but code uses 'input-phone-number'/'select-vehicle-brand'/'select-vehicle-model'). Not a bug — spec/code drift; testing agent used actual selectors from code.",
+    "Vehicle brand/model use native <select> element rather than shadcn Select. Works fine; note for consistency with rest of UI.",
+    "In-memory store means all data resets on backend restart — acceptable per spec but worth documenting for users."
+  ],
+  "updated_files": ["/app/backend/tests/test_autofix_api.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Any phone / any name / password >=4 chars / OTP always 123456 (per /app/memory/test_credentials.md)",
+  "seed_data_creation": "None persisted (in-memory store). Test appointment AF-6CB98B created transiently during UI test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Actual data-testids: input-name, input-phone-number, input-password, select-vehicle-brand, select-vehicle-model, input-vehicle-plate, btn-send-otp, input-otp-digit-0..5, btn-verify-otp, card-service-item, calendar-booking-date, calendar-day-YYYY-MM-DD, btn-slot-manha/tarde, btn-time-HHMM (colon stripped), btn-confirm-booking, tracking-stepper, stepper-stage-item, tab-status, tab-sms-feed, sms-feed-list, dev-control-bar, btn-demo-advance-stage/regress-stage/reset-stage. Backend in-memory store resets on restart; always create a fresh appointment first."
+}

@@ -1,0 +1,160 @@
+{
+  "theme": "dark_modern_slate",
+  "palette": {
+    "background": "#0F172A",
+    "surface": "#1E293B",
+    "surface_hover": "#334155",
+    "border": "#334155",
+    "border_glow": "#475569",
+    "text_primary": "#F8FAFC",
+    "text_secondary": "#94A3B8",
+    "text_muted": "#64748B",
+    "status_emerald": {
+      "bg": "#064E3B",
+      "text": "#6EE7B7",
+      "border": "#059669",
+      "glow": "0 0 15px rgba(16, 185, 129, 0.3)"
+    },
+    "status_amber": {
+      "bg": "#451A03",
+      "text": "#FDE68A",
+      "border": "#D97706",
+      "glow": "0 0 15px rgba(245, 158, 11, 0.3)"
+    },
+    "status_sky": {
+      "bg": "#0C4A6E",
+      "text": "#BAE6FD",
+      "border": "#0284C7",
+      "glow": "0 0 15px rgba(56, 189, 248, 0.3)"
+    },
+    "brand_accent": {
+      "primary": "#10B981",
+      "hover": "#059669",
+      "contrast_text": "#FFFFFF"
+    }
+  },
+  "typography": {
+    "font_family_heading": "Outfit, sans-serif",
+    "font_family_body": "Inter, sans-serif",
+    "font_family_mono": "JetBrains Mono, monospace",
+    "scale": {
+      "h1": "text-3xl md:text-5xl font-extrabold tracking-tight",
+      "h2": "text-2xl md:text-3xl font-bold tracking-tight",
+      "h3": "text-xl md:text-2xl font-semibold",
+      "h4": "text-lg font-semibold",
+      "body": "text-sm md:text-base leading-relaxed",
+      "caption": "text-xs font-medium text-slate-400"
+    }
+  },
+  "market_locale": {
+    "language": "pt-BR",
+    "currency": "BRL (R$)",
+    "date_format": "DD/MM/YYYY",
+    "terminology": {
+      "app_name": "AutoFix Pro - Oficina Conectada",
+      "categories": [
+        "Manutenção Preventiva",
+        "Reparação e Correção",
+        "Diagnóstico e Elétrica"
+      ],
+      "stepper_stages": [
+        "Agendamento Confirmado",
+        "Veículo Recebido na Oficina",
+        "Diagnóstico / Em Execução",
+        "Teste de Rodagem / CQ",
+        "Pronto para Retirada"
+      ],
+      "time_slots": [
+        "Manhã (08:00 - 12:00)",
+        "Tarde (13:00 - 18:00)"
+      ]
+    }
+  },
+  "layout_and_spacing": {
+    "container_padding": "px-4 sm:px-6 lg:px-8 py-6 max-w-7xl mx-auto",
+    "card_padding": "p-5 sm:p-6",
+    "bento_grid": "grid grid-cols-1 md:grid-cols-12 gap-6",
+    "border_radius": "rounded-2xl",
+    "elevation": "shadow-xl shadow-slate-950/40"
+  },
+  "key_components": {
+    "onboarding_modal": {
+      "path": "/app/frontend/src/components/OnboardingModal.jsx",
+      "features": [
+        "Phone number input formatted to +55 (XX) 9XXXX-XXXX",
+        "Simulated SMS trigger with 6-digit OTP split input",
+        "60s countdown timer with resend button",
+        "Smart vehicle brand to model autocomplete flow (e.g., Volkswagen -> Gol / Polo / T-Cross, Chevrolet -> Onix / Tracker)"
+      ]
+    },
+    "service_catalog": {
+      "path": "/app/frontend/src/components/ServiceCatalog.jsx",
+      "features": [
+        "Category tabs (Manutenção Preventiva, Reparação e Correção, Diagnóstico e Elétrica)",
+        "Selectable service cards with price in R$, estimated duration, visual iconography, and description",
+        "Interactive selection counter and running price total bar"
+      ]
+    },
+    "booking_wizard": {
+      "path": "/app/frontend/src/components/BookingWizard.jsx",
+      "features": [
+        "Shadcn Calendar integration with disabled past dates",
+        "Manhã / Tarde time slot toggle buttons",
+        "Summary overlay before confirmation"
+      ]
+    },
+    "live_tracking_stepper": {
+      "path": "/app/frontend/src/components/LiveTracking.jsx",
+      "route": "/rastreio/:id",
+      "features": [
+        "Mobile-first interactive 5-stage stepper using Framer Motion",
+        "Stage cards with dynamic status badges (emerald/amber)",
+        "Progress bar connecting active stages",
+        "Dev/Demo floating control bar at bottom right to advance status live",
+        "SMS Feed tab with timestamps showing simulated auto notifications (e.g. 'Seu veículo deu entrada na oficina')"
+      ]
+    }
+  },
+  "image_urls": {
+    "mechanic_hero": "https://images.unsplash.com/photo-1615906655593-ad0386982a0f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHwxfHxjYXIlMjBtZWNoYW5pYyUyMHJlcGFpciUyMHdvcmtzaG9wJTIwYXV0b21vdGl2ZSUyMHNlcnZpY2V8ZW58MHx8fHwxNzg4Mzg3MzM0fDA&ixlib=rb-4.1.0&q=85",
+    "under_car_inspection": "https://images.unsplash.com/photo-1702146713858-8e7d1cc29fe8?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHwzfHxjYXIlMjBtZWNoYW5pYyUyMHJlcGFpciUyMHdvcmtzaG9wJTIwYXV0b21vdGl2ZSUyMHNlcnZpY2V8ZW58MHx8fHwxNzg4Mzg3MzM0fDA&ixlib=rb-4.1.0&q=85",
+    "workshop_garage": "https://images.unsplash.com/photo-1676018366904-c083ed678e60?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHwyfHxjYXIlMjBtZWNoYW5pYyUyMHJlcGFpciUyMHdvcmtzaG9wJTIwYXV0b21vdGl2ZSUyMHNlcnZpY2V8ZW58MHx8fHwxNzg4Mzg3MzM0fDA&ixlib=rb-4.1.0&q=85"
+  },
+  "testing_requirements": {
+    "data_testid_convention": "kebab-case",
+    "mandatory_testids": [
+      "nav-brand-logo",
+      "btn-open-onboarding",
+      "input-phone-number",
+      "btn-send-otp",
+      "input-otp-digit-0",
+      "btn-verify-otp",
+      "select-vehicle-brand",
+      "select-vehicle-model",
+      "input-vehicle-plate",
+      "tab-category-preventiva",
+      "tab-category-reparacao",
+      "tab-category-diagnostico",
+      "card-service-item",
+      "btn-proceed-booking",
+      "calendar-booking-date",
+      "btn-slot-manha",
+      "btn-slot-tarde",
+      "btn-confirm-booking",
+      "tracking-stepper",
+      "stepper-stage-item",
+      "btn-demo-advance-stage",
+      "btn-demo-regress-stage",
+      "tab-sms-feed",
+      "sms-feed-list"
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Use dark slate base styling (#0F172A for page background, #1E293B for cards/surfaces, #334155 for borders).",
+    "Apply emerald badges for completed/active stages and amber badges for pending or high attention stages.",
+    "Use Framer Motion AnimatePresence for tab switching, OTP modal entrance, and stepper stage progress animations.",
+    "Ensure all copy is localized into Portuguese (pt-BR) as requested.",
+    "Add explicit data-testid attributes to all interactive components.",
+    "Ensure responsiveness on mobile viewports for live tracking stepper."
+  ]
+}
