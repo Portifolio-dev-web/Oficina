@@ -106,7 +106,7 @@ export default function Admin() {
           </span>
           <h1 className="text-center font-display text-2xl font-bold">Acesso restrito</h1>
           <p className="mb-6 mt-2 text-center text-xs leading-relaxed text-slate-400">
-            Painel exclusivo da equipe AutoFix Pro. Informe suas credenciais de administrador.
+            Painel exclusivo da equipe Oficina Fácil. Informe suas credenciais de administrador.
           </p>
           <div className="space-y-4">
             <div>

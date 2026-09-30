@@ -1,0 +1,30 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    environment:
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-monitor.informatica25@gmail.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin@2043}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        REACT_APP_BACKEND_URL: ""
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped

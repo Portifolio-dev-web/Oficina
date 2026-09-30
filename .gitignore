@@ -30,8 +30,9 @@ next-env.d.ts
 dist/
 dist
 
-# Environment files (comprehensive coverage)
-
+# Environment files
+.env
+.env.*
 *token.json*
 *credentials.json*
 
@@ -53,16 +54,8 @@ venv/
 .venv/
 
 # Development tools
-chainlit.md
-.chainlit
 .ipynb_checkpoints/
-.ac
-
-# Deployment
-.vercel
-
-# Data and databases
-agenthub/agents/youtube/db
+.pytest_cache/
 
 # Archive files and large assets
 **/*.zip
@@ -76,7 +69,5 @@ agenthub/agents/youtube/db
 # Build caches
 .cache/
 
-memory/test_credentials.md
-
-# Mobile development
-android-sdk/
+# Exemplos de configuração devem ser versionados
+!.env.example

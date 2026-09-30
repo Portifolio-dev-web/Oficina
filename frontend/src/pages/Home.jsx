@@ -159,7 +159,7 @@ export default function Home() {
       </section>
 
       <footer className="border-t border-slate-800 py-8 text-center text-xs text-slate-500">
-        AutoFix Pro — Oficina Conectada · Demonstração com dados simulados
+        Oficina Fácil — Oficina Conectada · Demonstração com dados simulados
       </footer>
     </main>
   );

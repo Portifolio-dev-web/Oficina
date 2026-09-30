@@ -245,7 +245,7 @@ export default function Tracking() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-bold text-slate-300">AutoFix Pro</span>
+                    <span className="text-xs font-bold text-slate-300">Oficina Fácil</span>
                     <span className="font-mono2 text-[11px] text-slate-500">{fmtTs(sms.timestamp)}</span>
                   </div>
                   <p className="mt-1 text-sm leading-relaxed text-slate-300">{sms.message}</p>

@@ -1,5 +1,5 @@
 import { useNavigate, Link } from "react-router-dom";
-import { Wrench, LogOut, CalendarPlus, LayoutDashboard } from "lucide-react";
+import { LogOut, CalendarPlus, LayoutDashboard } from "lucide-react";
 import { useSession } from "@/lib/session";
 
 export default function Navbar() {
@@ -10,12 +10,11 @@ export default function Navbar() {
     <header className="sticky top-0 z-40 border-b border-slate-700/60 bg-slate-900/80 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link to="/" data-testid="nav-brand-logo" className="flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500 shadow-[0_0_18px_rgba(16,185,129,0.4)]">
-            <Wrench className="h-5 w-5 text-white" />
-          </span>
-          <span className="font-display text-lg font-bold tracking-tight">
-            AutoFix <span className="text-emerald-400">Pro</span>
-          </span>
+          <img
+            src={`${process.env.PUBLIC_URL}/logo-oficina-facil.svg`}
+            alt="Oficina Fácil"
+            className="h-9 w-auto"
+          />
         </Link>
 
         <div className="flex items-center gap-3">

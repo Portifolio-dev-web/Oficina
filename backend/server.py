@@ -5,6 +5,7 @@ import os
 import logging
 import uuid
 import hashlib
+import secrets
 from pathlib import Path
 from pydantic import BaseModel
 from typing import Optional, List
@@ -165,7 +166,7 @@ class StatusUpdate(BaseModel):
 # ---------------------------------------------------------------------------
 @api_router.get("/")
 async def root():
-    return {"message": "AutoFix Pro Mock API"}
+    return {"message": "Oficina Fácil Mock API"}
 
 
 @api_router.post("/auth/send-otp")
@@ -265,9 +266,10 @@ async def update_status(appointment_id: str, body: Optional[StatusUpdate] = None
     return appt
 
 
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "admin@2043"
-ADMIN_EMAIL = "monitor.informatica25@gmail.com"
+# Credenciais configuráveis via variáveis de ambiente (ver backend/.env.example)
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin@2043")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "monitor.informatica25@gmail.com")
 ADMIN_TOKENS = set()
 
 
@@ -283,9 +285,11 @@ def require_admin(authorization):
 
 @api_router.post("/admin/login")
 async def admin_login(body: AdminLoginRequest):
-    if body.username not in (ADMIN_USERNAME, ADMIN_EMAIL) or body.password != ADMIN_PASSWORD:
+    valid_user = body.username in (ADMIN_USERNAME, ADMIN_EMAIL)
+    valid_password = secrets.compare_digest(body.password.encode(), ADMIN_PASSWORD.encode())
+    if not (valid_user and valid_password):
         raise HTTPException(status_code=401, detail="Usuário ou senha inválidos.")
-    token = f"admin-{uuid.uuid4().hex}"
+    token = f"admin-{secrets.token_urlsafe(32)}"
     ADMIN_TOKENS.add(token)
     return {
         "success": True,

@@ -1,9 +1,9 @@
-"""Admin dashboard API tests for AutoFix Pro - password-protected admin panel."""
+"""Admin dashboard API tests for Oficina Fácil - password-protected admin panel."""
 import os
 import pytest
 import requests
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL").rstrip("/")
+BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000").rstrip("/")
 API = f"{BASE_URL}/api"
 
 ADMIN_USER = "admin"
