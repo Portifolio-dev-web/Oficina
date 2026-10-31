@@ -69,5 +69,11 @@ venv/
 # Build caches
 .cache/
 
+# Configuração local do Claude Code (específica da máquina/sessão)
+.agents/
+.claude/
+.mcp.json
+skills-lock.json
+
 # Exemplos de configuração devem ser versionados
 !.env.example
