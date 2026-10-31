@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Header
+from fastapi import FastAPI, APIRouter, HTTPException, Header, Request
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 import logging
@@ -11,6 +11,7 @@ from typing import Optional, List
 
 from settings import get_settings
 from supabase_client import get_admin_client, get_auth_client
+from rate_limit import check_rate_limit, client_ip
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -209,7 +210,12 @@ async def root():
 
 
 @api_router.post("/auth/send-otp")
-async def send_otp(body: SendOtpRequest):
+async def send_otp(body: SendOtpRequest, request: Request):
+    # SEGURANÇA (auditoria, item S4): limite por IP (disparo em massa) e por
+    # telefone (não deixa inundar de SMS um número específico).
+    check_rate_limit("send-otp:ip", client_ip(request), limit=5, window_seconds=60)
+    check_rate_limit("send-otp:phone", body.phone, limit=10, window_seconds=900)
+
     auth = get_auth_client()
     try:
         auth.auth.sign_in_with_otp({"phone": _to_e164(body.phone)})
@@ -223,7 +229,12 @@ async def send_otp(body: SendOtpRequest):
 
 
 @api_router.post("/auth/verify-otp")
-async def verify_otp(body: VerifyOtpRequest):
+async def verify_otp(body: VerifyOtpRequest, request: Request):
+    # SEGURANÇA (auditoria, item S4): sem isso, o código de 6 dígitos podia
+    # ser testado por força bruta sem limite nenhum.
+    check_rate_limit("verify-otp:ip", client_ip(request), limit=10, window_seconds=60)
+    check_rate_limit("verify-otp:phone", body.phone, limit=10, window_seconds=900)
+
     auth = get_auth_client()
     try:
         res = auth.auth.verify_otp(
@@ -409,7 +420,12 @@ def require_admin(authorization: Optional[str]) -> str:
 
 
 @api_router.post("/admin/login")
-async def admin_login(body: AdminLoginRequest):
+async def admin_login(body: AdminLoginRequest, request: Request):
+    # SEGURANÇA (auditoria, item S4): limite por IP e por conta contra força
+    # bruta de senha — antes não havia nenhum.
+    check_rate_limit("admin-login:ip", client_ip(request), limit=10, window_seconds=60)
+    check_rate_limit("admin-login:user", body.username.strip().lower(), limit=10, window_seconds=900)
+
     settings = get_settings()
     email = settings.admin_email if body.username == settings.admin_username else body.username
 
