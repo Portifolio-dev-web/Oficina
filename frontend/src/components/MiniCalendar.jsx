@@ -47,7 +47,7 @@ export default function MiniCalendar({ value, onChange }) {
       </div>
       <div className="grid grid-cols-7 gap-1">
         {WEEKDAYS.map((w, i) => (
-          <div key={i} className="pb-1 text-center text-[10px] font-bold uppercase text-slate-500">{w}</div>
+          <div key={i} className="pb-1 text-center text-[11px] font-bold uppercase text-slate-500">{w}</div>
         ))}
         {cells.map((d, i) => {
           if (!d) return <div key={`e${i}`} />;

@@ -68,8 +68,11 @@ export default function Home() {
             className="relative"
           >
             <div className="overflow-hidden rounded-3xl border border-slate-700 shadow-2xl shadow-slate-950/60">
+              {/* PRIVACIDADE (auditoria, item A7): imagem auto-hospedada em
+                  vez de carregada do Unsplash — o visitante não entrega mais
+                  IP/user-agent a um terceiro só para ver a Home. */}
               <img
-                src="https://images.unsplash.com/photo-1615906655593-ad0386982a0f?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTF8MHwxfHNlYXJjaHwxfHxjYXIlMjBtZWNoYW5pYyUyMHJlcGFpciUyMHdvcmtzaG9wJTIwYXV0b21vdGl2ZSUyMHNlcnZpY2V8ZW58MHx8fHwxNzg4Mzg3MzM0fDA&ixlib=rb-4.1.0&q=85"
+                src={`${process.env.PUBLIC_URL}/images/hero-mecanico.jpg`}
                 alt="Mecânico trabalhando em veículo"
                 className="h-full w-full object-cover"
               />

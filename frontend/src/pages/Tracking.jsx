@@ -69,7 +69,7 @@ export default function Tracking() {
           <div className="flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-800/60 p-4">
             <Car className="h-5 w-5 shrink-0 text-emerald-400" />
             <div className="min-w-0">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Veículo</div>
+              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Veículo</div>
               <div data-testid="tracking-vehicle" className="truncate text-sm font-semibold">
                 {appt.vehicle.make} {appt.vehicle.model}
               </div>
@@ -79,7 +79,7 @@ export default function Tracking() {
           <div className="flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-800/60 p-4">
             <CalendarDays className="h-5 w-5 shrink-0 text-amber-400" />
             <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Agendado para</div>
+              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Agendado para</div>
               <div data-testid="tracking-datetime" className="text-sm font-semibold">
                 {appt.date.split("-").reverse().join("/")} · {appt.time}
               </div>
@@ -89,7 +89,7 @@ export default function Tracking() {
           <div className="flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-800/60 p-4">
             <Wrench className="h-5 w-5 shrink-0 text-sky-400" />
             <div className="min-w-0">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Serviços</div>
+              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Serviços</div>
               <div data-testid="tracking-services" className="truncate text-sm font-semibold">
                 {appt.services.map((s) => s.name).join(", ")}
               </div>
@@ -117,7 +117,7 @@ export default function Tracking() {
           }`}
         >
           <MessageSquareText className="h-4 w-4" /> SMS
-          <span className="rounded-full bg-slate-950/40 px-2 py-0.5 text-[10px] font-bold">{appt.smsLogs.length}</span>
+          <span className="rounded-full bg-slate-950/40 px-2 py-0.5 text-[11px] font-bold">{appt.smsLogs.length}</span>
         </button>
       </div>
 

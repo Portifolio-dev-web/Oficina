@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
+import { MotionConfig } from "framer-motion";
 import { Toaster } from "sonner";
 import Navbar from "@/components/Navbar";
 import OnboardingModal from "@/components/OnboardingModal";
@@ -52,8 +53,14 @@ function Shell() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Shell />
-    </BrowserRouter>
+    // ACESSIBILIDADE (auditoria, item A5): com reducedMotion="user", o
+    // Framer Motion desliga animações de transform/layout sozinho quando o
+    // sistema do visitante tem "Reduzir movimento" ativado (WCAG 2.3.3),
+    // sem precisar duplicar essa checagem em cada motion.div do app.
+    <MotionConfig reducedMotion="user">
+      <BrowserRouter>
+        <Shell />
+      </BrowserRouter>
+    </MotionConfig>
   );
 }
