@@ -6,7 +6,7 @@ import re
 import uuid as uuid_lib
 from functools import lru_cache
 from pathlib import Path
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 
 from settings import get_settings
@@ -170,35 +170,58 @@ def _get_profile_by_phone(phone: str) -> Optional[dict]:
 
 # ---------------------------------------------------------------------------
 # Request models
+#
+# SEGURANÇA (auditoria, item S7): nenhum campo de texto tinha max_length nem
+# as listas tinham tamanho máximo — um payload grande/abusivo era aceito sem
+# limite. Os números abaixo têm folga sobre o que a tela realmente manda (ver
+# frontend/src/pages/Booking.jsx, OnboardingModal.jsx), só para rejeitar
+# entrada fora do que a aplicação usa, não para apertar o produto.
 # ---------------------------------------------------------------------------
+class VehicleInput(BaseModel):
+    make: str = Field("", max_length=60)
+    model: str = Field("", max_length=60)
+    plate: Optional[str] = Field(None, max_length=10)
+
+
+class UserInput(BaseModel):
+    phone: Optional[str] = Field(None, max_length=20)
+
+
+class ServiceSelection(BaseModel):
+    id: Optional[str] = Field(None, max_length=64)
+
+
 class SendOtpRequest(BaseModel):
-    phone: str
+    phone: str = Field(..., max_length=20)
 
 
 class VerifyOtpRequest(BaseModel):
-    phone: str
-    code: str
-    name: Optional[str] = None
-    password: Optional[str] = None
-    vehicle: Optional[dict] = None
+    phone: str = Field(..., max_length=20)
+    code: str = Field(..., max_length=10)
+    name: Optional[str] = Field(None, max_length=120)
+    password: Optional[str] = Field(None, max_length=128)
+    vehicle: Optional[VehicleInput] = None
 
 
 class AppointmentCreate(BaseModel):
-    user: dict
-    vehicle: dict
-    services: List[dict]
-    date: str
-    time: str
-    period: Optional[str] = ""
+    user: UserInput
+    vehicle: VehicleInput
+    services: List[ServiceSelection] = Field(..., max_length=20)
+    date: str = Field(..., max_length=10)
+    time: str = Field(..., max_length=8)
+    period: Optional[str] = Field("", max_length=20)
 
 
 class StatusUpdate(BaseModel):
+    # Sem max/min de propósito: o clamp em update_status() já trata qualquer
+    # valor (inclusive fora da faixa — ver test_status_clamp), então um
+    # limite aqui só duplicaria a regra e poderia virar 422 em vez de clamp.
     stage: Optional[int] = None
 
 
 class AdminLoginRequest(BaseModel):
-    username: str
-    password: str
+    username: str = Field(..., max_length=120)
+    password: str = Field(..., max_length=128)
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +243,8 @@ async def send_otp(body: SendOtpRequest, request: Request):
     try:
         auth.auth.sign_in_with_otp({"phone": _to_e164(body.phone)})
     except Exception as exc:
-        logger.warning("Falha ao enviar OTP para %s: %s", body.phone, exc)
+        # SEGURANÇA (auditoria, item S8): não logar o telefone do cliente.
+        logger.warning("Falha ao enviar OTP: %s", exc)
         raise HTTPException(
             status_code=400,
             detail="Não foi possível enviar o código. Verifique o número e tente novamente.",
@@ -251,8 +275,8 @@ async def verify_otp(body: VerifyOtpRequest, request: Request):
     if body.name:
         db.table("profiles").update({"name": body.name}).eq("id", user.id).execute()
 
-    if body.vehicle and body.vehicle.get("make"):
-        _get_or_create_vehicle(user.id, body.vehicle)
+    if body.vehicle and body.vehicle.make:
+        _get_or_create_vehicle(user.id, body.vehicle.model_dump())
 
     if body.password:
         try:
@@ -297,16 +321,16 @@ async def get_models(make: str):
 @api_router.post("/appointments")
 async def create_appointment(body: AppointmentCreate):
     db = get_admin_client()
-    phone = body.user.get("phone")
+    phone = body.user.phone
     profile = _get_profile_by_phone(phone) if phone else None
     if not profile:
         raise HTTPException(
             status_code=401, detail="Cliente não autenticado. Faça login antes de agendar."
         )
 
-    vehicle_id = _get_or_create_vehicle(profile["id"], body.vehicle)
+    vehicle_id = _get_or_create_vehicle(profile["id"], body.vehicle.model_dump())
 
-    service_ids = [s.get("id") for s in body.services if s.get("id")]
+    service_ids = [s.id for s in body.services if s.id]
     if not service_ids:
         raise HTTPException(status_code=400, detail="Selecione ao menos um serviço.")
 
@@ -351,7 +375,9 @@ async def create_appointment(body: AppointmentCreate):
         ]
     ).execute()
 
-    logger.info("[Simulação SMS] Agendamento %s confirmado para %s", booking["id"], phone)
+    # SEGURANÇA (auditoria, item S8): não logar o telefone — o ID do
+    # agendamento já identifica o registro para quem precisar investigar.
+    logger.info("[Simulação SMS] Agendamento %s confirmado.", booking["id"])
     return _fetch_appointment(booking["id"])
 
 
