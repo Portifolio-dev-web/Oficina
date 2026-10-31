@@ -224,6 +224,11 @@ class AdminLoginRequest(BaseModel):
     password: str = Field(..., max_length=128)
 
 
+class MechanicCreate(BaseModel):
+    name: str = Field(..., max_length=120)
+    specialty: str = Field("", max_length=120)
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -552,6 +557,58 @@ async def admin_overview(authorization: Optional[str] = Header(None)):
         "mechanics": mechanics,
         "services": list(servicos.values()),
     }
+
+
+@api_router.post("/admin/mechanics")
+async def create_mechanic(body: MechanicCreate, authorization: Optional[str] = Header(None)):
+    require_admin(authorization)
+
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Informe o nome do mecânico.")
+
+    db = get_admin_client()
+    created = (
+        db.table("mechanics")
+        .insert({"name": name, "specialty": body.specialty.strip()})
+        .execute()
+        .data[0]
+    )
+    return {
+        "id": created["id"],
+        "name": created["name"],
+        "specialty": created["specialty"],
+        "available": created["available"],
+    }
+
+
+@api_router.delete("/admin/mechanics/{mechanic_id}")
+async def delete_mechanic(mechanic_id: str, authorization: Optional[str] = Header(None)):
+    require_admin(authorization)
+
+    try:
+        uuid_lib.UUID(mechanic_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Mecânico não encontrado.")
+
+    db = get_admin_client()
+    mechanic = db.table("mechanics").select("id").eq("id", mechanic_id).maybe_single().execute().data
+    if not mechanic:
+        raise HTTPException(status_code=404, detail="Mecânico não encontrado.")
+
+    try:
+        db.table("mechanics").delete().eq("id", mechanic_id).execute()
+    except Exception as exc:
+        # bookings.mechanic_id referencia mechanics(id) sem ON DELETE CASCADE
+        # (ver supabase_schema.sql) — remover um mecânico já atribuído a um
+        # agendamento vira violação de FK no banco; isso é aceitável (vira um
+        # 409 amigável), não um 500.
+        logger.warning("Falha ao remover mecânico %s: %s", mechanic_id, exc)
+        raise HTTPException(
+            status_code=409,
+            detail="Não é possível remover: este mecânico está atribuído a algum agendamento.",
+        )
+    return {"success": True}
 
 
 @api_router.post("/admin/mechanics/{mechanic_id}/toggle")

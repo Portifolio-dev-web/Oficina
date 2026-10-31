@@ -39,3 +39,9 @@ export const getAdminOverview = (token) =>
 
 export const toggleMechanic = (id, token) =>
   axios.post(`${API}/admin/mechanics/${id}/toggle`, {}, authHeaders(token)).then((r) => r.data);
+
+export const createMechanic = (payload, token) =>
+  axios.post(`${API}/admin/mechanics`, payload, authHeaders(token)).then((r) => r.data);
+
+export const deleteMechanic = (id, token) =>
+  axios.delete(`${API}/admin/mechanics/${id}`, authHeaders(token)).then((r) => r.data);

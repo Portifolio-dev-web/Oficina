@@ -115,6 +115,53 @@ class TestMechanicToggleAuth:
         assert r.status_code == 404
 
 
+# --- POST /api/admin/mechanics e DELETE /api/admin/mechanics/{id} (CRUD) ---
+class TestMechanicCRUD:
+    def test_create_no_token(self, client):
+        r = client.post(f"{API}/admin/mechanics", json={"name": "Teste"})
+        assert r.status_code == 401
+
+    def test_delete_no_token(self, client):
+        r = client.delete(f"{API}/admin/mechanics/00000000-0000-0000-0000-000000000000")
+        assert r.status_code == 401
+
+    def test_create_requires_name(self, client, token):
+        r = client.post(f"{API}/admin/mechanics", json={"name": "   "}, headers=auth(token))
+        assert r.status_code == 400
+
+    def test_create_and_delete(self, client, token):
+        r = client.post(
+            f"{API}/admin/mechanics",
+            json={"name": "Mecânico de Teste", "specialty": "Testes automatizados"},
+            headers=auth(token),
+        )
+        assert r.status_code == 200, r.text
+        created = r.json()
+        assert created["name"] == "Mecânico de Teste"
+        assert created["specialty"] == "Testes automatizados"
+        assert created["available"] is True
+
+        overview = client.get(f"{API}/admin/overview", headers=auth(token)).json()
+        assert any(m["id"] == created["id"] for m in overview["mechanics"])
+
+        r2 = client.delete(f"{API}/admin/mechanics/{created['id']}", headers=auth(token))
+        assert r2.status_code == 200
+        assert r2.json()["success"] is True
+
+        overview_after = client.get(f"{API}/admin/overview", headers=auth(token)).json()
+        assert not any(m["id"] == created["id"] for m in overview_after["mechanics"])
+
+    def test_delete_invalid_id(self, client, token):
+        r = client.delete(f"{API}/admin/mechanics/not-a-uuid", headers=auth(token))
+        assert r.status_code == 404
+
+    def test_delete_unknown_uuid(self, client, token):
+        r = client.delete(
+            f"{API}/admin/mechanics/00000000-0000-0000-0000-000000000000", headers=auth(token)
+        )
+        assert r.status_code == 404
+
+
 # --- POST /api/admin/logout ---
 # Nota: diferente do mock antigo (token em um set em memória, removido no
 # logout), o access token aqui é um JWT stateless do Supabase Auth — ele

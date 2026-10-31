@@ -3,12 +3,20 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Loader2, Car, Clock, CheckCircle2, Users, Wrench, ChevronLeft, ChevronRight,
-  MessageSquareText, CalendarDays, ClipboardList, Lock, LogOut,
+  MessageSquareText, CalendarDays, ClipboardList, Lock, LogOut, Trash2, UserPlus,
 } from "lucide-react";
 import { toast } from "sonner";
-import { getAdminOverview, toggleMechanic, updateStage, adminLogin, adminLogout } from "@/lib/api";
+import {
+  getAdminOverview, toggleMechanic, createMechanic, deleteMechanic,
+  updateStage, adminLogin, adminLogout,
+} from "@/lib/api";
 import { STAGES, formatBRL } from "@/constants/data";
 import StatusBadge from "@/components/StatusBadge";
+import {
+  AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader,
+  AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogAction,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 
 const stageTone = (i) => (i === 0 ? "sky" : i === 4 ? "emerald" : "amber");
 
@@ -22,6 +30,9 @@ export default function Admin() {
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
+  const [newMechanic, setNewMechanic] = useState({ name: "", specialty: "" });
+  const [addingMechanic, setAddingMechanic] = useState(false);
+  const [removingMechanicId, setRemovingMechanicId] = useState(null);
 
   const logout = useCallback(async () => {
     await adminLogout(token).catch(() => {});
@@ -88,6 +99,34 @@ export default function Admin() {
         localStorage.removeItem("autofix_admin");
         setToken("");
       }
+    }
+  };
+
+  const handleAddMechanic = async (e) => {
+    e.preventDefault();
+    setAddingMechanic(true);
+    try {
+      await createMechanic(newMechanic, token);
+      setNewMechanic({ name: "", specialty: "" });
+      toast.success("Mecânico adicionado.");
+      await load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Não foi possível adicionar o mecânico.");
+    } finally {
+      setAddingMechanic(false);
+    }
+  };
+
+  const handleRemoveMechanic = async (m) => {
+    setRemovingMechanicId(m.id);
+    try {
+      await deleteMechanic(m.id, token);
+      toast.success(`${m.name} removido.`);
+      await load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Não foi possível remover o mecânico.");
+    } finally {
+      setRemovingMechanicId(null);
     }
   };
 
@@ -315,20 +354,98 @@ export default function Admin() {
                     <div className="truncate text-sm font-semibold">{m.name}</div>
                     <div className="truncate text-[11px] text-slate-500">{m.specialty}</div>
                   </div>
-                  <button
-                    data-testid={`btn-toggle-mechanic-${m.id}`}
-                    onClick={() => handleToggleMechanic(m)}
-                    className={`shrink-0 rounded-full border px-3 py-1 text-[11px] font-bold transition-all ${
-                      m.available
-                        ? "border-emerald-600 bg-emerald-950 text-emerald-300"
-                        : "border-slate-600 bg-slate-800 text-slate-400 hover:border-slate-500"
-                    }`}
-                  >
-                    {m.available ? "Disponível" : "Ocupado"}
-                  </button>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <button
+                      data-testid={`btn-toggle-mechanic-${m.id}`}
+                      onClick={() => handleToggleMechanic(m)}
+                      className={`rounded-full border px-3 py-1 text-[11px] font-bold transition-all ${
+                        m.available
+                          ? "border-emerald-600 bg-emerald-950 text-emerald-300"
+                          : "border-slate-600 bg-slate-800 text-slate-400 hover:border-slate-500"
+                      }`}
+                    >
+                      {m.available ? "Disponível" : "Ocupado"}
+                    </button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <button
+                          data-testid={`btn-remove-mechanic-${m.id}`}
+                          disabled={removingMechanicId === m.id}
+                          className="flex h-7 w-7 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-red-950/40 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+                          title={`Remover ${m.name}`}
+                        >
+                          {removingMechanicId === m.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Remover {m.name}?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Essa ação não pode ser desfeita. Se {m.name} estiver atribuído a algum
+                            agendamento em andamento, a remoção será bloqueada.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction
+                            data-testid={`btn-confirm-remove-mechanic-${m.id}`}
+                            onClick={() => handleRemoveMechanic(m)}
+                          >
+                            Remover
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                 </div>
               ))}
             </div>
+
+            <form
+              data-testid="form-add-mechanic"
+              onSubmit={handleAddMechanic}
+              className="mt-4 space-y-2 border-t border-slate-700/70 pt-4"
+            >
+              <div>
+                <label htmlFor="new-mechanic-name" className="mb-1 block text-[11px] font-medium text-slate-400">
+                  Nome do novo mecânico
+                </label>
+                <input
+                  id="new-mechanic-name"
+                  data-testid="input-new-mechanic-name"
+                  className={inputCls}
+                  placeholder="Nome"
+                  value={newMechanic.name}
+                  onChange={(e) => setNewMechanic((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label htmlFor="new-mechanic-specialty" className="mb-1 block text-[11px] font-medium text-slate-400">
+                  Especialidade (opcional)
+                </label>
+                <input
+                  id="new-mechanic-specialty"
+                  data-testid="input-new-mechanic-specialty"
+                  className={inputCls}
+                  placeholder="Ex.: Freios e suspensão"
+                  value={newMechanic.specialty}
+                  onChange={(e) => setNewMechanic((f) => ({ ...f, specialty: e.target.value }))}
+                />
+              </div>
+              <button
+                data-testid="btn-add-mechanic"
+                type="submit"
+                disabled={addingMechanic || !newMechanic.name.trim()}
+                className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-emerald-600/60 bg-emerald-950/40 py-2 text-xs font-bold text-emerald-300 transition-colors hover:bg-emerald-950/70 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {addingMechanic ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserPlus className="h-3.5 w-3.5" />}
+                Adicionar mecânico
+              </button>
+            </form>
           </section>
 
           <section className="rounded-2xl border border-slate-700 bg-slate-800/60 p-5">
