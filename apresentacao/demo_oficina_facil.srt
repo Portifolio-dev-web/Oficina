@@ -1,0 +1,132 @@
+1
+00:00:00,000 --> 00:00:12,440
+Oficina Fácil é uma plataforma de agendamento e acompanhamento de serviços automotivos, com rastreio em tempo real e notificações por SMS.
+
+2
+00:00:12,560 --> 00:00:25,720
+O fluxo tem três passos simples: cadastro com verificação por SMS, agendamento dos serviços e acompanhamento das etapas até a retirada do veículo.
+
+3
+00:00:25,840 --> 00:00:33,640
+A página inicial também mostra o catálogo completo de serviços oferecidos pela oficina.
+
+4
+00:00:33,760 --> 00:00:39,720
+Vamos iniciar um agendamento como cliente, começando pelo cadastro.
+
+5
+00:00:39,880 --> 00:00:48,920
+Para agendar, é preciso criar uma conta rápida informando dados pessoais, celular, senha e o veículo.
+
+6
+00:00:49,080 --> 00:00:55,000
+Nome, celular, senha e os dados do veículo — marca, modelo e placa.
+
+7
+00:00:55,160 --> 00:01:05,280
+Ao enviar, a oficina dispara um SMS simulado com o código de verificação de 6 dígitos (ambiente de demonstração).
+
+8
+00:01:05,440 --> 00:01:12,040
+O cliente digita o código recebido para confirmar a conta automaticamente.
+
+9
+00:01:12,160 --> 00:01:18,760
+Conta verificada! O cliente já é levado direto para a tela de agendamento.
+
+10
+00:01:18,920 --> 00:01:28,600
+O catálogo é organizado por categorias: manutenção preventiva, reparação e correção, diagnóstico e elétrica.
+
+11
+00:01:28,760 --> 00:01:40,600
+Basta selecionar os serviços desejados: o resumo com a quantidade e o valor total aparece automaticamente na parte inferior da tela.
+
+12
+00:01:40,760 --> 00:01:51,800
+O valor total dos serviços escolhidos aparece em destaque nessa barra inferior, junto com a contagem de itens selecionados.
+
+13
+00:01:51,920 --> 00:01:56,440
+Em seguida, o cliente escolhe a data no calendário.
+
+14
+00:01:56,560 --> 00:02:06,440
+As datas passadas ficam bloqueadas automaticamente — só é possível escolher dias disponíveis a partir de hoje.
+
+15
+00:02:06,600 --> 00:02:13,720
+E também o período, manhã ou tarde, com os horários disponíveis para aquele dia.
+
+16
+00:02:13,880 --> 00:02:25,000
+Ao confirmar o agendamento, a oficina registra a ordem de serviço e envia um novo SMS de confirmação com o link de rastreio.
+
+17
+00:02:25,160 --> 00:02:34,800
+A tela de rastreio mostra as cinco etapas do serviço, do recebimento do veículo até a retirada pelo cliente.
+
+18
+00:02:34,960 --> 00:02:44,560
+A aba de SMS reúne o histórico completo de mensagens simuladas enviadas ao cliente durante todo o processo.
+
+19
+00:02:44,680 --> 00:02:56,640
+Voltando para a aba de status, é possível ver a barra de controle de demonstração, usada para simular o avanço das etapas do serviço.
+
+20
+00:02:56,800 --> 00:03:07,280
+Cada avanço de etapa dispara automaticamente um SMS simulado avisando o cliente sobre a mudança de status do veículo.
+
+21
+00:03:07,440 --> 00:03:18,320
+Avançando as demais etapas até a conclusão: o veículo passa por diagnóstico, execução do serviço e controle de qualidade.
+
+22
+00:03:18,480 --> 00:03:27,040
+Ao chegar na última etapa, o status muda para 'Concluído' — o veículo está pronto para retirada.
+
+23
+00:03:27,200 --> 00:03:34,480
+O painel administrativo da oficina é protegido por login, exclusivo para a equipe.
+
+24
+00:03:34,640 --> 00:03:44,680
+Com usuário e senha de administrador, a equipe acessa a visão completa da oficina (credenciais de demonstração).
+
+25
+00:03:44,840 --> 00:03:56,680
+O painel reúne indicadores em tempo real: veículos em manutenção, aguardando entrada, prontos para retirada e mecânicos disponíveis.
+
+26
+00:03:56,840 --> 00:04:07,440
+Cada veículo aparece em um card com placa, cliente, serviços contratados e uma barra de progresso da ordem de serviço.
+
+27
+00:04:07,560 --> 00:04:19,000
+Na lateral, a lista de 'Serviços a realizar' mostra quantos agendamentos existem para cada serviço e o tempo médio de execução.
+
+28
+00:04:19,120 --> 00:04:27,080
+É possível alternar a disponibilidade de cada mecânico da equipe diretamente pelo painel.
+
+29
+00:04:27,240 --> 00:04:39,280
+O administrador também pode avançar a etapa de qualquer veículo direto do painel — o que dispara o SMS automaticamente para o cliente.
+
+30
+00:04:39,440 --> 00:04:46,560
+Pelo próprio card, também é possível abrir o rastreio detalhado daquele veículo.
+
+31
+00:04:46,680 --> 00:04:51,000
+Voltando ao painel para finalizar a demonstração.
+
+32
+00:04:51,160 --> 00:04:58,640
+Por fim, o administrador encerra a sessão com segurança pelo botão 'Sair do painel'.
+
+33
+00:04:58,800 --> 00:05:06,120
+Oficina Fácil — oficina conectada, do agendamento à retirada. Fim da demonstração.
+
