@@ -10,7 +10,7 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install -r requirements.txt
 
-COPY server.py settings.py supabase_client.py ./
+COPY server.py settings.py supabase_client.py rate_limit.py ./
 
 # Executa sem privilégios de root
 RUN useradd --create-home --uid 1000 appuser

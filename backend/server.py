@@ -562,6 +562,25 @@ async def toggle_mechanic(mechanic_id: str, authorization: Optional[str] = Heade
 
 app.include_router(api_router)
 
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    # SEGURANÇA (auditoria, item S5): a API não mandava nenhum cabeçalho de
+    # segurança. default-src 'none' é seguro aqui porque toda resposta é
+    # JSON (a API nunca serve HTML/JS/CSS que precisasse de 'self').
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+    response.headers["Permissions-Policy"] = (
+        "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    )
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
