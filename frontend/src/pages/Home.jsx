@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import {
   CalendarCheck, Radar, MessageSquareText, Wrench, ShieldCheck, Clock, ChevronRight, Sparkles,
 } from "lucide-react";
@@ -160,6 +160,14 @@ export default function Home() {
 
       <footer className="border-t border-slate-800 py-8 text-center text-xs text-slate-500">
         Oficina Fácil — Oficina Conectada · Demonstração com dados simulados
+        <span className="mx-2 text-slate-700">·</span>
+        <Link
+          to="/privacidade"
+          data-testid="footer-link-privacidade"
+          className="text-slate-400 underline-offset-2 hover:text-emerald-400 hover:underline"
+        >
+          Política de Privacidade
+        </Link>
       </footer>
     </main>
   );

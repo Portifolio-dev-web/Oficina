@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { Link } from "react-router-dom";
 import { X, Car, ShieldCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { sendOtp, verifyOtp, getMakes, getModels } from "@/lib/api";
@@ -283,6 +284,17 @@ export default function OnboardingModal({ open, onClose, onSuccess }) {
                       {loading && <Loader2 className="h-4 w-4 animate-spin" />}
                       Enviar código por SMS
                     </button>
+                    <p className="text-center text-[11px] text-slate-500">
+                      Ao continuar, você concorda com a nossa{" "}
+                      <Link
+                        to="/privacidade"
+                        data-testid="link-onboarding-privacy"
+                        className="font-semibold text-emerald-400 hover:text-emerald-300"
+                      >
+                        Política de Privacidade
+                      </Link>
+                      .
+                    </p>
                   </div>
                 </motion.div>
               ) : (

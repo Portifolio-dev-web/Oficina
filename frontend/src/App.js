@@ -7,6 +7,7 @@ import Home from "@/pages/Home";
 import Booking from "@/pages/Booking";
 import Tracking from "@/pages/Tracking";
 import Admin from "@/pages/Admin";
+import PrivacyPolicy from "@/pages/PrivacyPolicy";
 import { SessionContext, getSession, saveSession, clearSession } from "@/lib/session";
 
 function Shell() {
@@ -36,6 +37,7 @@ function Shell() {
           <Route path="/agendar" element={<Booking />} />
           <Route path="/rastreio/:id" element={<Tracking />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/privacidade" element={<PrivacyPolicy />} />
         </Routes>
         <OnboardingModal
           open={onboardingOpen}
