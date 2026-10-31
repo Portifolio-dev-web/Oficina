@@ -110,8 +110,13 @@ export default function Admin() {
           </p>
           <div className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-slate-400">Usuário</label>
+              {/* ACESSIBILIDADE (auditoria, item A1): label sem htmlFor/id não
+                  é associado ao campo — leitor de tela não anunciava "Usuário". */}
+              <label htmlFor="admin-username" className="mb-1.5 block text-xs font-medium text-slate-400">
+                Usuário
+              </label>
               <input
+                id="admin-username"
                 data-testid="input-admin-username"
                 className={inputCls}
                 placeholder="admin"
@@ -121,8 +126,11 @@ export default function Admin() {
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-slate-400">Senha</label>
+              <label htmlFor="admin-password" className="mb-1.5 block text-xs font-medium text-slate-400">
+                Senha
+              </label>
               <input
+                id="admin-password"
                 data-testid="input-admin-password"
                 type="password"
                 className={inputCls}

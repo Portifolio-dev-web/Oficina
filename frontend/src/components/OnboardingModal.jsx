@@ -179,10 +179,15 @@ export default function OnboardingModal({ open, onClose, onSuccess }) {
                     </div>
                   </div>
 
+                  {/* ACESSIBILIDADE (auditoria, item A1): nenhum label tinha
+                      htmlFor/id — leitor de tela não anunciava o nome do campo. */}
                   <div className="space-y-4">
                     <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-400">Nome completo</label>
+                      <label htmlFor="onboarding-name" className="mb-1.5 block text-xs font-medium text-slate-400">
+                        Nome completo
+                      </label>
                       <input
+                        id="onboarding-name"
                         data-testid="input-name"
                         className={inputCls}
                         placeholder="Maria Silva"
@@ -191,8 +196,11 @@ export default function OnboardingModal({ open, onClose, onSuccess }) {
                       />
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-400">Celular</label>
+                      <label htmlFor="onboarding-phone" className="mb-1.5 block text-xs font-medium text-slate-400">
+                        Celular
+                      </label>
                       <input
+                        id="onboarding-phone"
                         data-testid="input-phone-number"
                         className={inputCls}
                         placeholder="(11) 99999-9999"
@@ -202,8 +210,11 @@ export default function OnboardingModal({ open, onClose, onSuccess }) {
                       />
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-400">Senha</label>
+                      <label htmlFor="onboarding-password" className="mb-1.5 block text-xs font-medium text-slate-400">
+                        Senha
+                      </label>
                       <input
+                        id="onboarding-password"
                         data-testid="input-password"
                         type="password"
                         className={inputCls}
@@ -214,8 +225,11 @@ export default function OnboardingModal({ open, onClose, onSuccess }) {
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="mb-1.5 block text-xs font-medium text-slate-400">Marca</label>
+                        <label htmlFor="onboarding-make" className="mb-1.5 block text-xs font-medium text-slate-400">
+                          Marca
+                        </label>
                         <select
+                          id="onboarding-make"
                           data-testid="select-vehicle-brand"
                           className={inputCls}
                           value={form.make}
@@ -228,8 +242,11 @@ export default function OnboardingModal({ open, onClose, onSuccess }) {
                         </select>
                       </div>
                       <div>
-                        <label className="mb-1.5 block text-xs font-medium text-slate-400">Modelo</label>
+                        <label htmlFor="onboarding-model" className="mb-1.5 block text-xs font-medium text-slate-400">
+                          Modelo
+                        </label>
                         <select
+                          id="onboarding-model"
                           data-testid="select-vehicle-model"
                           className={inputCls}
                           value={form.model}
@@ -244,8 +261,11 @@ export default function OnboardingModal({ open, onClose, onSuccess }) {
                       </div>
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-xs font-medium text-slate-400">Placa (opcional)</label>
+                      <label htmlFor="onboarding-plate" className="mb-1.5 block text-xs font-medium text-slate-400">
+                        Placa (opcional)
+                      </label>
                       <input
+                        id="onboarding-plate"
                         data-testid="input-vehicle-plate"
                         className={`${inputCls} uppercase`}
                         placeholder="ABC1D23"
@@ -285,7 +305,16 @@ export default function OnboardingModal({ open, onClose, onSuccess }) {
                     </div>
                   </div>
 
-                  <div className="mb-5 flex justify-between gap-2" onPaste={handleOtpPaste}>
+                  {/* ACESSIBILIDADE (auditoria, item A4): os 6 campos não tinham
+                      aria-label nem agrupamento — leitor de tela anunciava
+                      "caixa de texto" 6 vezes, sem dizer que são dígitos de
+                      um código. */}
+                  <div
+                    role="group"
+                    aria-label="Código de verificação de 6 dígitos"
+                    className="mb-5 flex justify-between gap-2"
+                    onPaste={handleOtpPaste}
+                  >
                     {otp.map((d, i) => (
                       <input
                         key={i}
@@ -296,6 +325,7 @@ export default function OnboardingModal({ open, onClose, onSuccess }) {
                         onKeyDown={handleOtpKeyDown(i)}
                         inputMode="numeric"
                         maxLength={1}
+                        aria-label={`Dígito ${i + 1} de 6 do código`}
                         className="h-14 w-11 rounded-xl border border-slate-700 bg-slate-900/70 text-center font-mono2 text-xl font-semibold text-emerald-300 outline-none transition-all focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/25 sm:w-12"
                       />
                     ))}
