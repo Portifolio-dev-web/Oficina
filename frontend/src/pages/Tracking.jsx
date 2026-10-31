@@ -4,11 +4,9 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Check, Loader2, MessageSquareText, Activity, Car, CalendarDays, Wrench, SearchX,
 } from "lucide-react";
-import { toast } from "sonner";
-import { getTracking, updateStage } from "@/lib/api";
+import { getTracking } from "@/lib/api";
 import { STAGES } from "@/constants/data";
 import StatusBadge from "@/components/StatusBadge";
-import DevControlBar from "@/components/DevControlBar";
 
 const fmtTs = (ts) =>
   new Date(ts).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -18,31 +16,10 @@ export default function Tracking() {
   const [appt, setAppt] = useState(null);
   const [error, setError] = useState(null);
   const [tab, setTab] = useState("status");
-  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     getTracking(id).then(setAppt).catch(() => setError("not-found"));
   }, [id]);
-
-  const setStage = async (stage) => {
-    setBusy(true);
-    try {
-      const updated = await updateStage(id, stage);
-      const changed = updated.statusIndex !== appt.statusIndex;
-      setAppt(updated);
-      if (changed) {
-        const last = updated.smsLogs[updated.smsLogs.length - 1];
-        toast(`[Simulação SMS] ${last.message}`, {
-          icon: <MessageSquareText className="h-4 w-4" />,
-          duration: 8000,
-        });
-      }
-    } catch {
-      toast.error("Falha ao atualizar o status.");
-    } finally {
-      setBusy(false);
-    }
-  };
 
   if (error) {
     return (
@@ -76,7 +53,7 @@ export default function Tracking() {
   const done = appt.statusIndex === STAGES.length - 1;
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-10 pb-36 sm:px-6">
+    <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <div className="mb-2 flex flex-wrap items-center gap-3">
           <h1 className="font-display text-3xl font-extrabold tracking-tight">Rastreio do veículo</h1>
@@ -255,14 +232,6 @@ export default function Tracking() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      <DevControlBar
-        stage={appt.statusIndex}
-        busy={busy}
-        onAdvance={() => setStage(appt.statusIndex + 1)}
-        onRegress={() => setStage(appt.statusIndex - 1)}
-        onReset={() => setStage(0)}
-      />
     </main>
   );
 }

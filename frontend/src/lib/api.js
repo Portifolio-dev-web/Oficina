@@ -20,12 +20,13 @@ export const createAppointment = (payload) =>
 export const getTracking = (id) =>
   axios.get(`${API}/tracking/${id}`).then((r) => r.data);
 
-export const updateStage = (id, stage) =>
-  axios
-    .post(`${API}/tracking/${id}/status`, stage === undefined ? {} : { stage })
-    .then((r) => r.data);
-
 const authHeaders = (token) => ({ headers: { Authorization: `Bearer ${token}` } });
+
+// Restrita ao admin (ver backend S1): exige o token do painel.
+export const updateStage = (id, stage, token) =>
+  axios
+    .post(`${API}/tracking/${id}/status`, stage === undefined ? {} : { stage }, authHeaders(token))
+    .then((r) => r.data);
 
 export const adminLogin = (payload) =>
   axios.post(`${API}/admin/login`, payload).then((r) => r.data);

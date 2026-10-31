@@ -18,6 +18,8 @@ API = f"{BASE_URL}/api"
 
 TEST_OTP_PHONE = os.environ.get("TEST_OTP_PHONE")
 TEST_OTP_CODE = os.environ.get("TEST_OTP_CODE")
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("SUPABASE_URL"),
@@ -29,12 +31,29 @@ requires_test_otp = pytest.mark.skipif(
     reason="Defina TEST_OTP_PHONE/TEST_OTP_CODE (Supabase Test phone numbers) para testar OTP.",
 )
 
+# SEGURANÇA (auditoria, item S1): POST /tracking/{id}/status agora exige um
+# admin autenticado, então os testes de troca de etapa também precisam de
+# ADMIN_PASSWORD (mesma credencial usada em test_admin_api.py).
+requires_admin = pytest.mark.skipif(
+    not ADMIN_PASSWORD,
+    reason="Defina ADMIN_PASSWORD (ver backend/.env.example) para testar troca de status.",
+)
+
 
 @pytest.fixture(scope="module")
 def session():
     s = requests.Session()
     s.headers.update({"Content-Type": "application/json"})
     return s
+
+
+@pytest.fixture(scope="module")
+def admin_auth_header(session):
+    r = session.post(
+        f"{API}/admin/login", json={"username": ADMIN_USERNAME, "password": ADMIN_PASSWORD}
+    )
+    assert r.status_code == 200, r.text
+    return {"Authorization": f"Bearer {r.json()['token']}"}
 
 
 # --- Auth / OTP ---
@@ -130,26 +149,39 @@ class TestAppointmentsTracking:
         r = session.get(f"{API}/tracking/AF-XXXXXX")
         assert r.status_code == 404
 
-    def test_status_advance_default(self, session, appt_id):
+    def test_status_requires_admin(self, session, appt_id):
         r = session.post(f"{API}/tracking/{appt_id}/status", json={})
+        assert r.status_code == 401
+
+    @requires_admin
+    def test_status_advance_default(self, session, appt_id, admin_auth_header):
+        r = session.post(f"{API}/tracking/{appt_id}/status", json={}, headers=admin_auth_header)
         assert r.status_code == 200
         d = r.json()
         assert d["statusIndex"] == 1
         assert d["status"] == "Veículo Recebido na Oficina"
         assert len(d["smsLogs"]) == 2
 
-    def test_status_jump(self, session, appt_id):
-        r = session.post(f"{API}/tracking/{appt_id}/status", json={"stage": 4})
+    @requires_admin
+    def test_status_jump(self, session, appt_id, admin_auth_header):
+        r = session.post(
+            f"{API}/tracking/{appt_id}/status", json={"stage": 4}, headers=admin_auth_header
+        )
         assert r.status_code == 200
         d = r.json()
         assert d["statusIndex"] == 4
         assert d["status"] == "Pronto para Retirada"
 
-    def test_status_clamp(self, session, appt_id):
-        r = session.post(f"{API}/tracking/{appt_id}/status", json={"stage": 99})
+    @requires_admin
+    def test_status_clamp(self, session, appt_id, admin_auth_header):
+        r = session.post(
+            f"{API}/tracking/{appt_id}/status", json={"stage": 99}, headers=admin_auth_header
+        )
         assert r.status_code == 200
         assert r.json()["statusIndex"] == 4
 
-        r = session.post(f"{API}/tracking/{appt_id}/status", json={"stage": 0})
+        r = session.post(
+            f"{API}/tracking/{appt_id}/status", json={"stage": 0}, headers=admin_auth_header
+        )
         assert r.status_code == 200
         assert r.json()["statusIndex"] == 0

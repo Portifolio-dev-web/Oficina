@@ -353,7 +353,16 @@ async def get_tracking(appointment_id: str):
 
 
 @api_router.post("/tracking/{appointment_id}/status")
-async def update_status(appointment_id: str, body: Optional[StatusUpdate] = None):
+async def update_status(
+    appointment_id: str,
+    body: Optional[StatusUpdate] = None,
+    authorization: Optional[str] = Header(None),
+):
+    # SEGURANÇA (auditoria, item S1): esta rota não exigia autenticação —
+    # qualquer pessoa com o ID do agendamento podia avançar/voltar a etapa de
+    # QUALQUER cliente. O próprio schema (supabase_schema.sql) já documentava
+    # que só o admin deveria alterar a etapa; agora isso é aplicado de fato.
+    require_admin(authorization)
     db = get_admin_client()
     booking = (
         db.table("bookings").select("stage_index").eq("id", appointment_id).maybe_single().execute().data

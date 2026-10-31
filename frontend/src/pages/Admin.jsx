@@ -63,7 +63,7 @@ export default function Admin() {
   const changeStage = async (appt, stage) => {
     setBusyId(appt.id);
     try {
-      const updated = await updateStage(appt.id, stage);
+      const updated = await updateStage(appt.id, stage, token);
       if (updated.statusIndex !== appt.statusIndex) {
         const last = updated.smsLogs[updated.smsLogs.length - 1];
         toast(`[Simulação SMS → ${updated.user.name.split(" ")[0]}] ${last.message}`, {
