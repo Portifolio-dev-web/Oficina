@@ -74,11 +74,17 @@ export default function Booking() {
       };
       const appt = await createAppointment(payload);
       toast.success("Agendamento confirmado!");
-      const carro = `${appt.vehicle.make} ${appt.vehicle.model}`;
-      toast(`[Simulação SMS] Olá ${appt.user.name.split(" ")[0]}, seu agendamento para o ${carro} foi confirmado. Link: /rastreio/${appt.id}`, {
-        icon: <MessageSquareText className="h-4 w-4" />,
-        duration: 9000,
-      });
+      // A mensagem vem do backend (notifications.send_sms) — mesmo texto que
+      // foi, de fato, enviado por SMS (ou simulado, se nenhum provedor
+      // estiver configurado; ver backend/.env.example). Evita duplicar aqui
+      // um texto que poderia ficar desatualizado em relação ao que sai.
+      const lastSms = appt.smsLogs?.[appt.smsLogs.length - 1];
+      if (lastSms) {
+        toast(lastSms.message, {
+          icon: <MessageSquareText className="h-4 w-4" />,
+          duration: 9000,
+        });
+      }
       navigate(`/rastreio/${appt.id}`);
     } catch {
       toast.error("Não foi possível concluir o agendamento.");

@@ -12,6 +12,7 @@ from typing import Optional, List
 from settings import get_settings
 from supabase_client import get_admin_client, get_auth_client
 from rate_limit import check_rate_limit, client_ip
+from notifications import send_sms
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -116,6 +117,18 @@ def _fetch_appointment(booking_id: str) -> Optional[dict]:
         .data
     )
     return _booking_to_dict(booking, services, history)
+
+
+async def _notify_latest_stage(appt: Optional[dict]) -> None:
+    """Envia (ou simula, conforme notifications.send_sms) a mensagem da etapa
+    mais recente do agendamento para o telefone do cliente."""
+    if not appt or not appt.get("smsLogs"):
+        return
+    phone = (appt.get("user") or {}).get("phone")
+    if not phone:
+        return
+    message = appt["smsLogs"][-1]["message"]
+    await send_sms(_to_e164(phone), message, booking_id=appt["id"])
 
 
 def _get_or_create_vehicle(owner_id: str, vehicle: Optional[dict]) -> str:
@@ -380,10 +393,9 @@ async def create_appointment(body: AppointmentCreate):
         ]
     ).execute()
 
-    # SEGURANÇA (auditoria, item S8): não logar o telefone — o ID do
-    # agendamento já identifica o registro para quem precisar investigar.
-    logger.info("[Simulação SMS] Agendamento %s confirmado.", booking["id"])
-    return _fetch_appointment(booking["id"])
+    appt = _fetch_appointment(booking["id"])
+    await _notify_latest_stage(appt)
+    return appt
 
 
 @api_router.get("/tracking/{appointment_id}")
@@ -418,13 +430,16 @@ async def update_status(
         new_stage = booking["stage_index"] + 1
     new_stage = max(0, min(len(_stage_names()) - 1, new_stage))
 
-    if new_stage != booking["stage_index"]:
+    stage_changed = new_stage != booking["stage_index"]
+    if stage_changed:
         db.table("bookings").update({"stage_index": new_stage}).eq("id", appointment_id).execute()
         # A entrada correspondente em booking_status_history é criada
         # automaticamente pela trigger bookings_log_stage_change (ver
         # supabase_schema.sql), equivalente ao antigo stage_sms()/smsLogs.
 
     appt = _fetch_appointment(appointment_id)
+    if stage_changed:
+        await _notify_latest_stage(appt)
     return appt
 
 

@@ -58,5 +58,6 @@ Use `API_BASE_URL` para apontar os testes para outro endereço.
 
 ## Observações
 
-- Os dados ficam em memória e são reiniciados quando o backend reinicia.
-- O envio de SMS é simulado (código OTP fixo `123456`).
+- Os dados ficam no Supabase/Postgres do projeto configurado (ver `supabase_schema.sql`), não em memória.
+- O código de verificação do cadastro/login (OTP) é enviado de verdade pelo provedor de SMS configurado no Supabase Auth (Authentication > Providers > Phone). Para testar sem gastar SMS real, cadastre um "Test phone number" lá e preencha `TEST_OTP_PHONE`/`TEST_OTP_CODE` no `.env`.
+- As notificações de mudança de status do agendamento são simuladas por padrão (só vão para o log do backend) — para enviá-las de verdade, preencha `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN`/`TWILIO_FROM_NUMBER` no `backend/.env` (ver comentários em `backend/.env.example`).
