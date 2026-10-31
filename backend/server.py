@@ -581,9 +581,14 @@ async def security_headers(request: Request, call_next):
     return response
 
 
+# SEGURANÇA (auditoria, item S6): allow_credentials=True com
+# CORS_ORIGINS="*" (padrão) é uma combinação inválida/arriscada — e nem é
+# necessária aqui. A autenticação é por Bearer token enviado explicitamente
+# pelo JS (Authorization), não por cookie, então o navegador nunca precisa
+# mandar "credentials" nessas chamadas.
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
+    allow_credentials=False,
     allow_origins=get_settings().cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
