@@ -23,7 +23,7 @@ Copie para `.env` e ajuste conforme o ambiente. No Docker, elas podem ser defini
 |---|---|---|
 | `ADMIN_USERNAME` | `admin` | Usuário do painel `/admin` |
 | `ADMIN_EMAIL` | — | E-mail aceito como login alternativo |
-| `ADMIN_PASSWORD` | `admin@2043` | Senha do painel — **altere em produção** |
+| `ADMIN_PASSWORD` | — | Senha do painel admin — defina a sua no `backend/.env` local, nunca aqui |
 | `CORS_ORIGINS` | `*` | Origens permitidas, separadas por vírgula |
 | `REACT_APP_BACKEND_URL` | vazio | URL base da API usada pelo frontend |
 
