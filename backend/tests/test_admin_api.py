@@ -1,4 +1,9 @@
-"""Admin dashboard API tests for Oficina Fácil - password-protected admin panel."""
+"""Testes de integração do painel admin contra um projeto Supabase real.
+
+Requer supabase_schema.sql + supabase_seed.sql aplicados e o usuário
+administrador já criado via backend/scripts/create_admin.py, usando as
+mesmas credenciais de ADMIN_EMAIL/ADMIN_PASSWORD definidas em backend/.env.
+"""
 import os
 import pytest
 import requests
@@ -6,9 +11,17 @@ import requests
 BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000").rstrip("/")
 API = f"{BASE_URL}/api"
 
-ADMIN_USER = "admin"
-ADMIN_EMAIL = "monitor.informatica25@gmail.com"
-ADMIN_PASS = "admin@2043"
+ADMIN_USER = os.environ.get("ADMIN_USERNAME", "admin")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "monitor.informatica25@gmail.com")
+ADMIN_PASS = os.environ.get("ADMIN_PASSWORD")
+
+pytestmark = pytest.mark.skipif(
+    not (os.environ.get("SUPABASE_URL") and ADMIN_PASS),
+    reason=(
+        "Requer SUPABASE_URL e ADMIN_PASSWORD, com o usuário administrador "
+        "já criado via backend/scripts/create_admin.py."
+    ),
+)
 
 
 @pytest.fixture(scope="module")
@@ -32,12 +45,13 @@ def auth(tok):
 # --- POST /api/admin/login ---
 class TestAdminLogin:
     def test_login_wrong_password(self, client):
-        r = client.post(f"{API}/admin/login", json={"username": "admin", "password": "wrong"})
+        r = client.post(f"{API}/admin/login", json={"username": ADMIN_USER, "password": "wrong"})
         assert r.status_code == 401
-        assert "inválid" in r.json()["detail"].lower()
 
     def test_login_wrong_user(self, client):
-        r = client.post(f"{API}/admin/login", json={"username": "nobody", "password": ADMIN_PASS})
+        r = client.post(
+            f"{API}/admin/login", json={"username": "nobody@example.com", "password": ADMIN_PASS}
+        )
         assert r.status_code == 401
 
     def test_login_success_admin(self, client):
@@ -46,7 +60,7 @@ class TestAdminLogin:
         data = r.json()
         assert data["success"] is True
         assert isinstance(data["token"], str) and len(data["token"]) > 10
-        assert data["user"]["username"] == "admin"
+        assert data["user"]["username"] == ADMIN_USER
 
     def test_login_success_email_as_username(self, client):
         r = client.post(f"{API}/admin/login", json={"username": ADMIN_EMAIL, "password": ADMIN_PASS})
@@ -70,83 +84,48 @@ class TestAdminOverviewAuth:
         data = r.json()
         for k in ("stats", "appointments", "mechanics", "services"):
             assert k in data
-        assert data["stats"]["total"] >= 6
-        assert data["stats"]["mecanicosTotal"] == 5
-        ids = [a["id"] for a in data["appointments"]]
-        for i in range(1, 7):
-            assert f"AF-DEMO{i:02d}" in ids
+        assert data["stats"]["mecanicosTotal"] == len(data["mechanics"])
+        assert data["stats"]["mecanicosDisponiveis"] == sum(1 for m in data["mechanics"] if m["available"])
 
 
 # --- POST /api/admin/mechanics/{id}/toggle (auth required) ---
 class TestMechanicToggleAuth:
     def test_toggle_no_token(self, client):
-        r = client.post(f"{API}/admin/mechanics/m2/toggle")
+        r = client.post(f"{API}/admin/mechanics/00000000-0000-0000-0000-000000000000/toggle")
         assert r.status_code == 401
 
     def test_toggle_with_token(self, client, token):
-        before = next(m for m in client.get(f"{API}/admin/overview", headers=auth(token)).json()["mechanics"] if m["id"] == "m2")["available"]
-        r = client.post(f"{API}/admin/mechanics/m2/toggle", headers=auth(token))
+        mechanics = client.get(f"{API}/admin/overview", headers=auth(token)).json()["mechanics"]
+        assert mechanics, "Rode supabase_seed.sql para ter mecânicos cadastrados."
+        mechanic_id, before = mechanics[0]["id"], mechanics[0]["available"]
+
+        r = client.post(f"{API}/admin/mechanics/{mechanic_id}/toggle", headers=auth(token))
         assert r.status_code == 200
         assert r.json()["available"] == (not before)
-        # restore
-        client.post(f"{API}/admin/mechanics/m2/toggle", headers=auth(token))
+        client.post(f"{API}/admin/mechanics/{mechanic_id}/toggle", headers=auth(token))  # restore
 
     def test_toggle_invalid_id(self, client, token):
-        r = client.post(f"{API}/admin/mechanics/does-not-exist/toggle", headers=auth(token))
+        r = client.post(f"{API}/admin/mechanics/not-a-uuid/toggle", headers=auth(token))
+        assert r.status_code == 404
+
+    def test_toggle_unknown_uuid(self, client, token):
+        r = client.post(
+            f"{API}/admin/mechanics/00000000-0000-0000-0000-000000000000/toggle", headers=auth(token)
+        )
         assert r.status_code == 404
 
 
-# --- POST /api/admin/logout invalidates token ---
+# --- POST /api/admin/logout ---
+# Nota: diferente do mock antigo (token em um set em memória, removido no
+# logout), o access token aqui é um JWT stateless do Supabase Auth — ele
+# permanece criptograficamente válido até expirar, mesmo após o logout
+# revogar a sessão no GoTrue. Por isso este teste verifica apenas que o
+# endpoint funciona, sem assumir invalidação imediata do token corrente.
 class TestAdminLogout:
-    def test_logout_invalidates_token(self, client):
+    def test_logout_ok(self, client):
         r = client.post(f"{API}/admin/login", json={"username": ADMIN_USER, "password": ADMIN_PASS})
         tok = r.json()["token"]
-        # token works
         assert client.get(f"{API}/admin/overview", headers=auth(tok)).status_code == 200
-        # logout
         r2 = client.post(f"{API}/admin/logout", headers=auth(tok))
         assert r2.status_code == 200
-        # token no longer works
-        assert client.get(f"{API}/admin/overview", headers=auth(tok)).status_code == 401
-
-
-# --- Regression: public customer flows remain unprotected ---
-class TestPublicRegression:
-    def test_send_otp_public(self, client):
-        r = client.post(f"{API}/auth/send-otp", json={"phone": "(11) 99999-0000"})
-        assert r.status_code == 200
-        assert r.json()["testCode"] == "123456"
-
-    def test_verify_otp_public(self, client):
-        client.post(f"{API}/auth/send-otp", json={"phone": "(11) 99999-1234"})
-        r = client.post(f"{API}/auth/verify-otp", json={
-            "phone": "(11) 99999-1234", "code": "123456", "name": "TEST_User",
-            "password": "abcd", "vehicle": {"make": "Fiat", "model": "Mobi", "plate": "TST0A00"}
-        })
-        assert r.status_code == 200
-        assert r.json()["success"] is True
-
-    def test_tracking_get_public(self, client):
-        r = client.get(f"{API}/tracking/AF-DEMO01")
-        assert r.status_code == 200
-
-    def test_tracking_status_public(self, client):
-        # Advance & regress without auth
-        appt = client.get(f"{API}/tracking/AF-DEMO01").json()
-        original = appt["statusIndex"]
-        target = min(4, original + 1) if original < 4 else max(0, original - 1)
-        r = client.post(f"{API}/tracking/AF-DEMO01/status", json={"stage": target})
-        assert r.status_code == 200
-        assert r.json()["statusIndex"] == target
-        # restore
-        client.post(f"{API}/tracking/AF-DEMO01/status", json={"stage": original})
-
-    def test_create_appointment_public(self, client):
-        r = client.post(f"{API}/appointments", json={
-            "user": {"name": "TEST_Reg", "phone": "(11) 90000-0000"},
-            "vehicle": {"make": "Toyota", "model": "Yaris", "plate": "TST1B11"},
-            "services": [{"id": "troca-oleo", "name": "Troca de óleo", "price": 189, "duration": "45 min"}],
-            "date": "2026-02-01", "time": "10:00", "period": "Manhã",
-        })
-        assert r.status_code == 200
-        assert r.json()["id"].startswith("AF-")
+        assert r2.json()["success"] is True

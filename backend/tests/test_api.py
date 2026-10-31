@@ -1,10 +1,33 @@
-"""Backend API tests for Oficina Fácil mock endpoints."""
+"""Testes de integração do backend contra um projeto Supabase real.
+
+Desde a migração para Supabase (ver supabase_schema.sql), este backend não
+tem mais estado em memória, então estes testes exigem um backend rodando de
+verdade (API_BASE_URL) ligado a um projeto Supabase com o schema e o seed de
+catálogo aplicados (supabase_schema.sql + supabase_seed.sql).
+
+Para os testes de OTP sem depender de SMS real, cadastre um número em
+Supabase Dashboard > Authentication > Test phone numbers com um código fixo,
+e exporte TEST_OTP_PHONE / TEST_OTP_CODE (ver backend/.env.example).
+"""
 import os
 import pytest
 import requests
 
 BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000").rstrip("/")
 API = f"{BASE_URL}/api"
+
+TEST_OTP_PHONE = os.environ.get("TEST_OTP_PHONE")
+TEST_OTP_CODE = os.environ.get("TEST_OTP_CODE")
+
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("SUPABASE_URL"),
+    reason="Requer um projeto Supabase configurado (ver backend/.env.example).",
+)
+
+requires_test_otp = pytest.mark.skipif(
+    not (TEST_OTP_PHONE and TEST_OTP_CODE),
+    reason="Defina TEST_OTP_PHONE/TEST_OTP_CODE (Supabase Test phone numbers) para testar OTP.",
+)
 
 
 @pytest.fixture(scope="module")
@@ -15,35 +38,41 @@ def session():
 
 
 # --- Auth / OTP ---
+@requires_test_otp
 class TestAuth:
     def test_send_otp(self, session):
-        r = session.post(f"{API}/auth/send-otp", json={"phone": "11999998888"})
+        r = session.post(f"{API}/auth/send-otp", json={"phone": TEST_OTP_PHONE})
         assert r.status_code == 200
-        d = r.json()
-        assert d["success"] is True
-        assert d["testCode"] == "123456"
+        assert r.json()["success"] is True
 
     def test_verify_otp_wrong(self, session):
-        session.post(f"{API}/auth/send-otp", json={"phone": "11999998888"})
-        r = session.post(f"{API}/auth/verify-otp", json={"phone": "11999998888", "code": "000000"})
+        session.post(f"{API}/auth/send-otp", json={"phone": TEST_OTP_PHONE})
+        r = session.post(
+            f"{API}/auth/verify-otp", json={"phone": TEST_OTP_PHONE, "code": "000000"}
+        )
         assert r.status_code == 400
 
     def test_verify_otp_ok(self, session):
-        session.post(f"{API}/auth/send-otp", json={"phone": "11999998888"})
-        r = session.post(f"{API}/auth/verify-otp", json={
-            "phone": "11999998888", "code": "123456",
-            "name": "Teste Silva", "password": "1234",
-            "vehicle": {"make": "Chevrolet", "model": "Onix"}
-        })
+        session.post(f"{API}/auth/send-otp", json={"phone": TEST_OTP_PHONE})
+        r = session.post(
+            f"{API}/auth/verify-otp",
+            json={
+                "phone": TEST_OTP_PHONE,
+                "code": TEST_OTP_CODE,
+                "name": "Teste Silva",
+                "password": "senha-teste-1234",
+                "vehicle": {"make": "Chevrolet", "model": "Onix"},
+            },
+        )
         assert r.status_code == 200
         d = r.json()
         assert d["success"] is True
-        assert d["token"].startswith("mock-jwt-")
+        assert isinstance(d["token"], str) and len(d["token"]) > 10
         assert d["user"]["name"] == "Teste Silva"
         assert "passwordHash" not in d["user"]
 
 
-# --- Vehicles ---
+# --- Vehicles (catálogo público, não depende de OTP) ---
 class TestVehicles:
     def test_models_chevrolet(self, session):
         r = session.get(f"{API}/vehicles/models", params={"make": "Chevrolet"})
@@ -59,19 +88,28 @@ class TestVehicles:
 
 
 # --- Appointments + Tracking ---
+@requires_test_otp
 class TestAppointmentsTracking:
     @pytest.fixture(scope="class")
     def appt_id(self, session):
+        # Garante que exista um profile para TEST_OTP_PHONE antes de agendar
+        # (criar o agendamento exige um cliente autenticado via OTP).
+        session.post(f"{API}/auth/send-otp", json={"phone": TEST_OTP_PHONE})
+        session.post(
+            f"{API}/auth/verify-otp",
+            json={"phone": TEST_OTP_PHONE, "code": TEST_OTP_CODE, "name": "Teste Silva"},
+        )
+
         payload = {
-            "user": {"name": "Teste Silva", "phone": "11999998888"},
+            "user": {"name": "Teste Silva", "phone": TEST_OTP_PHONE},
             "vehicle": {"make": "Chevrolet", "model": "Onix", "plate": "ABC1D23"},
-            "services": [{"id": "s1", "name": "Troca de Óleo", "price": 150}],
+            "services": [{"id": "troca-oleo"}],
             "date": "2026-02-15",
             "time": "09:00",
-            "period": "manha",
+            "period": "Manhã",
         }
         r = session.post(f"{API}/appointments", json=payload)
-        assert r.status_code == 200
+        assert r.status_code == 200, r.text
         d = r.json()
         assert d["id"].startswith("AF-")
         assert d["status"] == "Agendamento Confirmado"

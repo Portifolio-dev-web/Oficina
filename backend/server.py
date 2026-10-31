@@ -1,15 +1,16 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Header
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-import os
 import logging
-import uuid
-import hashlib
-import secrets
+import re
+import uuid as uuid_lib
+from functools import lru_cache
 from pathlib import Path
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import datetime, timezone, timedelta
+
+from settings import get_settings
+from supabase_client import get_admin_client, get_auth_client
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -17,120 +18,153 @@ load_dotenv(ROOT_DIR / '.env')
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
 # ---------------------------------------------------------------------------
-# In-memory mock store (simulates database - no third-party dependencies)
+# Persistência: Supabase/Postgres (ver supabase_schema.sql e supabase_seed.sql)
 # ---------------------------------------------------------------------------
-OTP_STORE = {}        # phone -> code
-USERS = {}            # phone -> user dict
-APPOINTMENTS = {}     # id -> appointment dict
-
-MOCK_OTP_CODE = "123456"
-
-VEHICLE_MODELS = {
-    "Chevrolet": ["Onix", "Onix Plus", "Tracker", "S10", "Spin", "Cruze"],
-    "Toyota": ["Corolla", "Corolla Cross", "Hilux", "Yaris", "SW4"],
-    "Volkswagen": ["Gol", "Polo", "T-Cross", "Virtus", "Nivus", "Saveiro"],
-    "Fiat": ["Argo", "Mobi", "Toro", "Strada", "Pulse"],
-    "Honda": ["Civic", "City", "HR-V", "Fit"],
-    "Hyundai": ["HB20", "HB20S", "Creta", "Tucson"],
-    "Ford": ["Ka", "EcoSport", "Ranger", "Fiesta"],
-    "Renault": ["Kwid", "Sandero", "Logan", "Duster"],
-    "Nissan": ["Kicks", "Versa", "Frontier"],
-    "Jeep": ["Renegade", "Compass", "Commander"],
-}
-
-STAGES = [
-    "Agendamento Confirmado",
-    "Veículo Recebido na Oficina",
-    "Diagnóstico / Em Execução",
-    "Teste de Rodagem / CQ",
-    "Pronto para Retirada",
-]
+# Este backend não guarda mais nenhum estado em memória — toda leitura e
+# escrita (perfis, veículos, catálogo de serviços, mecânicos, agendamentos e
+# histórico de rastreamento) passa pelas tabelas criadas em supabase_schema.sql.
+# A autenticação de clientes usa o fluxo real de Phone OTP do Supabase Auth
+# (sign_in_with_otp / verify_otp) — é necessário configurar um provedor de SMS
+# na dashboard do Supabase (Authentication > Providers > Phone) para que o
+# código realmente seja enviado. O login de administrador usa email/senha do
+# Supabase Auth, com profiles.role = 'admin' (ver backend/scripts/create_admin.py).
 
 
-def now_iso():
-    return datetime.now(timezone.utc).isoformat()
+@lru_cache
+def _stage_names() -> dict:
+    db = get_admin_client()
+    rows = db.table("tracking_stages").select("stage_index,name").execute().data
+    return {row["stage_index"]: row["name"] for row in rows}
 
 
-def sms_entry(message):
-    return {"id": uuid.uuid4().hex[:10], "message": message, "timestamp": now_iso()}
+def _duration_label(minutes: int) -> str:
+    hours, rest = divmod(minutes, 60)
+    if hours and rest:
+        return f"{hours} h {rest}"
+    if hours:
+        return f"{hours} h"
+    return f"{rest} min"
 
 
-def vehicle_label(vehicle):
-    make = vehicle.get("make", "")
-    model = vehicle.get("model", "")
-    plate = vehicle.get("plate", "")
-    label = f"{make} {model}".strip()
-    return f"{label} ({plate})" if plate else label
+def _booking_to_dict(booking: dict, services: List[dict], history: List[dict]) -> dict:
+    vehicle = booking.get("vehicles") or {}
+    profile = booking.get("profiles") or {}
+    return {
+        "id": booking["id"],
+        "user": {"name": profile.get("name", ""), "phone": profile.get("phone", "")},
+        "vehicle": {
+            "make": vehicle.get("make", ""),
+            "model": vehicle.get("model", ""),
+            "plate": vehicle.get("plate"),
+        },
+        "services": [
+            {
+                "id": s["service_id"],
+                "name": s["service_name"],
+                "price": s["price_cents"] / 100,
+                "duration": _duration_label(s["duration_minutes"]),
+            }
+            for s in services
+        ],
+        "date": booking["scheduled_date"],
+        "time": str(booking["scheduled_time"])[:5],
+        "period": booking.get("period") or "",
+        "statusIndex": booking["stage_index"],
+        "status": _stage_names().get(booking["stage_index"], ""),
+        "createdAt": booking["created_at"],
+        "smsLogs": [
+            {"id": h["id"], "message": h["message"], "timestamp": h["created_at"]}
+            for h in history
+        ],
+    }
 
 
-def stage_sms(appt, stage):
-    nome = appt["user"].get("name", "cliente").split()[0]
-    carro = vehicle_label(appt["vehicle"])
-    if stage == 0:
-        return (f"Olá {nome}, seu agendamento para o {carro} foi confirmado para "
-                f"{appt['date']} às {appt['time']}. Link: /rastreio/{appt['id']}")
-    if stage == 1:
-        return f"{carro} recebido na oficina. Check-in concluído e inspeção inicial registrada."
-    if stage == 2:
-        return f"Diagnóstico em execução. Nossa equipe está trabalhando no seu {carro}."
-    if stage == 3:
-        return f"Seu {carro} está em teste de rodagem e controle de qualidade."
-    return f"Tudo pronto! Seu {carro} está disponível para retirada. Obrigado pela preferência!"
+def _fetch_appointment(booking_id: str) -> Optional[dict]:
+    db = get_admin_client()
+    booking = (
+        db.table("bookings")
+        .select("*, vehicles(make,model,plate), profiles(name,phone)")
+        .eq("id", booking_id)
+        .maybe_single()
+        .execute()
+        .data
+    )
+    if not booking:
+        return None
+    services = (
+        db.table("booking_services")
+        .select("service_id,service_name,price_cents,duration_minutes")
+        .eq("booking_id", booking_id)
+        .execute()
+        .data
+    )
+    history = (
+        db.table("booking_status_history")
+        .select("id,message,created_at")
+        .eq("booking_id", booking_id)
+        .order("created_at")
+        .execute()
+        .data
+    )
+    return _booking_to_dict(booking, services, history)
 
 
-MECHANICS = [
-    {"id": "m1", "name": "Carlos Souza", "specialty": "Motor e transmissão", "available": True},
-    {"id": "m2", "name": "Rafael Lima", "specialty": "Freios e suspensão", "available": True},
-    {"id": "m3", "name": "Bruno Alves", "specialty": "Elétrica e diagnóstico", "available": False},
-    {"id": "m4", "name": "Diego Ferreira", "specialty": "Climatização", "available": True},
-    {"id": "m5", "name": "André Santos", "specialty": "Revisão geral", "available": False},
-]
+def _get_or_create_vehicle(owner_id: str, vehicle: Optional[dict]) -> str:
+    db = get_admin_client()
+    vehicle = vehicle or {}
+    make = (vehicle.get("make") or "").strip()
+    model = (vehicle.get("model") or "").strip()
+    plate = (vehicle.get("plate") or "").strip() or None
+
+    query = (
+        db.table("vehicles")
+        .select("id")
+        .eq("owner_id", owner_id)
+        .eq("make", make)
+        .eq("model", model)
+    )
+    query = query.eq("plate", plate) if plate else query.is_("plate", "null")
+    existing = query.execute().data
+    if existing:
+        return existing[0]["id"]
+
+    inserted = (
+        db.table("vehicles")
+        .insert({"owner_id": owner_id, "make": make, "model": model, "plate": plate})
+        .execute()
+        .data
+    )
+    return inserted[0]["id"]
 
 
-def seed_demo():
-    if APPOINTMENTS:
-        return
-    base = datetime.now(timezone.utc).date()
-
-    def d(offset):
-        return (base + timedelta(days=offset)).isoformat()
-
-    demo = [
-        {"name": "Maria Silva", "phone": "(11) 99999-8888", "vehicle": {"make": "Chevrolet", "model": "Onix", "plate": "ABC1D23"},
-         "services": [{"id": "troca-oleo", "name": "Troca de óleo e filtros", "price": 189, "duration": "45 min"}], "date": d(0), "time": "09:00", "period": "Manhã", "stage": 2},
-        {"name": "João Pereira", "phone": "(11) 98888-7777", "vehicle": {"make": "Toyota", "model": "Corolla", "plate": "BRA2E19"},
-         "services": [{"id": "freios", "name": "Sistema de freios", "price": 459, "duration": "1 h 30"}], "date": d(0), "time": "10:00", "period": "Manhã", "stage": 1},
-        {"name": "Ana Costa", "phone": "(21) 97777-6666", "vehicle": {"make": "Volkswagen", "model": "T-Cross", "plate": "FZX4A72"},
-         "services": [{"id": "diag-eletronico", "name": "Diagnóstico eletrônico", "price": 149, "duration": "40 min"}], "date": d(0), "time": "08:00", "period": "Manhã", "stage": 3},
-        {"name": "Pedro Santos", "phone": "(31) 96666-5555", "vehicle": {"make": "Fiat", "model": "Toro", "plate": "GHI3K45"},
-         "services": [{"id": "revisao-periodica", "name": "Revisão periódica", "price": 399, "duration": "2 h"}], "date": d(1), "time": "14:00", "period": "Tarde", "stage": 0},
-        {"name": "Lúcia Mendes", "phone": "(41) 95555-4444", "vehicle": {"make": "Honda", "model": "HR-V", "plate": "JKL7M88"},
-         "services": [{"id": "climatizacao", "name": "Climatização", "price": 349, "duration": "1 h 20"}], "date": d(0), "time": "11:00", "period": "Manhã", "stage": 4},
-        {"name": "Marcos Rocha", "phone": "(51) 94444-3333", "vehicle": {"make": "Hyundai", "model": "Creta", "plate": "MNO9P12"},
-         "services": [{"id": "alinhamento", "name": "Alinhamento e balanceamento", "price": 159, "duration": "50 min"}], "date": d(1), "time": "15:00", "period": "Tarde", "stage": 0},
-    ]
-    for i, item in enumerate(demo):
-        appt_id = f"AF-DEMO{i + 1:02d}"
-        appt = {
-            "id": appt_id,
-            "user": {"name": item["name"], "phone": item["phone"]},
-            "vehicle": item["vehicle"],
-            "services": item["services"],
-            "date": item["date"],
-            "time": item["time"],
-            "period": item["period"],
-            "statusIndex": item["stage"],
-            "status": STAGES[item["stage"]],
-            "createdAt": now_iso(),
-            "smsLogs": [],
-        }
-        for st in range(item["stage"] + 1):
-            appt["smsLogs"].append(sms_entry(stage_sms(appt, st)))
-        APPOINTMENTS[appt_id] = appt
+def _to_e164(phone: str, default_country_code: str = "55") -> str:
+    """Normaliza o telefone mascarado do frontend ("(11) 99999-8888") para o
+    formato E.164 exigido pelo Supabase Auth ("+5511999998888"). Assume Brasil
+    quando o usuário não digita o código do país."""
+    digits = re.sub(r"\D", "", phone)
+    if phone.strip().startswith("+"):
+        return "+" + digits
+    return f"+{default_country_code}{digits}"
 
 
-seed_demo()
+def _get_profile_by_phone(phone: str) -> Optional[dict]:
+    db = get_admin_client()
+    return (
+        db.table("profiles")
+        .select("id,name,phone")
+        .eq("phone", phone)
+        .maybe_single()
+        .execute()
+        .data
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -161,86 +195,158 @@ class StatusUpdate(BaseModel):
     stage: Optional[int] = None
 
 
+class AdminLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 @api_router.get("/")
 async def root():
-    return {"message": "Oficina Fácil Mock API"}
+    return {"message": "Oficina Fácil API"}
 
 
 @api_router.post("/auth/send-otp")
 async def send_otp(body: SendOtpRequest):
-    OTP_STORE[body.phone] = MOCK_OTP_CODE
-    logging.info(f"[Simulação SMS] Código OTP para {body.phone}: {MOCK_OTP_CODE}")
-    return {
-        "success": True,
-        "message": "Código SMS enviado com sucesso!",
-        "testCode": MOCK_OTP_CODE,
-    }
+    auth = get_auth_client()
+    try:
+        auth.auth.sign_in_with_otp({"phone": _to_e164(body.phone)})
+    except Exception as exc:
+        logger.warning("Falha ao enviar OTP para %s: %s", body.phone, exc)
+        raise HTTPException(
+            status_code=400,
+            detail="Não foi possível enviar o código. Verifique o número e tente novamente.",
+        )
+    return {"success": True, "message": "Código SMS enviado com sucesso!"}
 
 
 @api_router.post("/auth/verify-otp")
 async def verify_otp(body: VerifyOtpRequest):
-    expected = OTP_STORE.get(body.phone)
-    if not expected or body.code != expected:
+    auth = get_auth_client()
+    try:
+        res = auth.auth.verify_otp(
+            {"phone": _to_e164(body.phone), "token": body.code, "type": "sms"}
+        )
+    except Exception:
         raise HTTPException(status_code=400, detail="Código inválido ou expirado.")
 
-    user = USERS.get(body.phone, {})
-    user.update({
-        "id": user.get("id", uuid.uuid4().hex[:12]),
-        "phone": body.phone,
-        "name": body.name or user.get("name", ""),
-        "vehicle": body.vehicle or user.get("vehicle", {}),
-    })
-    if body.password:
-        user["passwordHash"] = hashlib.sha256(body.password.encode()).hexdigest()
-    USERS[body.phone] = user
-    OTP_STORE.pop(body.phone, None)
+    user = res.user
+    if not user:
+        raise HTTPException(status_code=400, detail="Código inválido ou expirado.")
 
-    token = f"mock-jwt-{uuid.uuid4().hex}"
-    safe_user = {k: v for k, v in user.items() if k != "passwordHash"}
-    return {"success": True, "token": token, "user": safe_user}
+    db = get_admin_client()
+    if body.name:
+        db.table("profiles").update({"name": body.name}).eq("id", user.id).execute()
+
+    if body.vehicle and body.vehicle.get("make"):
+        _get_or_create_vehicle(user.id, body.vehicle)
+
+    if body.password:
+        try:
+            db.auth.admin.update_user_by_id(user.id, {"password": body.password})
+        except Exception as exc:
+            logger.warning("Não foi possível definir senha para %s: %s", user.id, exc)
+
+    profile = db.table("profiles").select("name,phone").eq("id", user.id).single().execute().data
+    return {
+        "success": True,
+        "token": res.session.access_token if res.session else None,
+        "user": {"id": user.id, "phone": profile["phone"], "name": profile["name"]},
+    }
 
 
 @api_router.get("/vehicles/makes")
 async def get_makes():
-    return {"makes": list(VEHICLE_MODELS.keys())}
+    db = get_admin_client()
+    rows = db.table("vehicle_makes").select("name").order("name").execute().data
+    return {"makes": [r["name"] for r in rows]}
 
 
 @api_router.get("/vehicles/models")
 async def get_models(make: str):
-    models = VEHICLE_MODELS.get(make)
-    if models is None:
+    db = get_admin_client()
+    make_row = (
+        db.table("vehicle_makes").select("id").eq("name", make).maybe_single().execute().data
+    )
+    if not make_row:
         raise HTTPException(status_code=404, detail="Marca não encontrada.")
-    return {"make": make, "models": models}
+    rows = (
+        db.table("vehicle_models")
+        .select("name")
+        .eq("make_id", make_row["id"])
+        .order("name")
+        .execute()
+        .data
+    )
+    return {"make": make, "models": [r["name"] for r in rows]}
 
 
 @api_router.post("/appointments")
 async def create_appointment(body: AppointmentCreate):
-    appt_id = f"AF-{uuid.uuid4().hex[:6].upper()}"
-    appt = {
-        "id": appt_id,
-        "user": body.user,
-        "vehicle": body.vehicle,
-        "services": body.services,
-        "date": body.date,
-        "time": body.time,
-        "period": body.period,
-        "statusIndex": 0,
-        "status": STAGES[0],
-        "createdAt": now_iso(),
-        "smsLogs": [],
-    }
-    appt["smsLogs"].append(sms_entry(stage_sms(appt, 0)))
-    APPOINTMENTS[appt_id] = appt
-    logging.info(f"[Simulação SMS] {appt['smsLogs'][0]['message']}")
-    return appt
+    db = get_admin_client()
+    phone = body.user.get("phone")
+    profile = _get_profile_by_phone(phone) if phone else None
+    if not profile:
+        raise HTTPException(
+            status_code=401, detail="Cliente não autenticado. Faça login antes de agendar."
+        )
+
+    vehicle_id = _get_or_create_vehicle(profile["id"], body.vehicle)
+
+    service_ids = [s.get("id") for s in body.services if s.get("id")]
+    if not service_ids:
+        raise HTTPException(status_code=400, detail="Selecione ao menos um serviço.")
+
+    catalog = (
+        db.table("services")
+        .select("id,name,price_cents,duration_minutes")
+        .in_("id", service_ids)
+        .eq("active", True)
+        .execute()
+        .data
+    )
+    catalog_by_id = {s["id"]: s for s in catalog}
+    missing = [sid for sid in service_ids if sid not in catalog_by_id]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Serviço(s) inválido(s): {', '.join(missing)}")
+
+    booking = (
+        db.table("bookings")
+        .insert(
+            {
+                "customer_id": profile["id"],
+                "vehicle_id": vehicle_id,
+                "scheduled_date": body.date,
+                "scheduled_time": body.time,
+                "period": body.period or "",
+            }
+        )
+        .execute()
+        .data[0]
+    )
+
+    db.table("booking_services").insert(
+        [
+            {
+                "booking_id": booking["id"],
+                "service_id": sid,
+                "service_name": catalog_by_id[sid]["name"],
+                "price_cents": catalog_by_id[sid]["price_cents"],
+                "duration_minutes": catalog_by_id[sid]["duration_minutes"],
+            }
+            for sid in service_ids
+        ]
+    ).execute()
+
+    logger.info("[Simulação SMS] Agendamento %s confirmado para %s", booking["id"], phone)
+    return _fetch_appointment(booking["id"])
 
 
 @api_router.get("/tracking/{appointment_id}")
 async def get_tracking(appointment_id: str):
-    appt = APPOINTMENTS.get(appointment_id)
+    appt = _fetch_appointment(appointment_id)
     if not appt:
         raise HTTPException(status_code=404, detail="Agendamento não encontrado.")
     return appt
@@ -248,84 +354,151 @@ async def get_tracking(appointment_id: str):
 
 @api_router.post("/tracking/{appointment_id}/status")
 async def update_status(appointment_id: str, body: Optional[StatusUpdate] = None):
-    appt = APPOINTMENTS.get(appointment_id)
-    if not appt:
+    db = get_admin_client()
+    booking = (
+        db.table("bookings").select("stage_index").eq("id", appointment_id).maybe_single().execute().data
+    )
+    if not booking:
         raise HTTPException(status_code=404, detail="Agendamento não encontrado.")
 
     if body is not None and body.stage is not None:
         new_stage = body.stage
     else:
-        new_stage = appt["statusIndex"] + 1
-    new_stage = max(0, min(len(STAGES) - 1, new_stage))
+        new_stage = booking["stage_index"] + 1
+    new_stage = max(0, min(len(_stage_names()) - 1, new_stage))
 
-    if new_stage != appt["statusIndex"]:
-        appt["statusIndex"] = new_stage
-        appt["status"] = STAGES[new_stage]
-        appt["smsLogs"].append(sms_entry(stage_sms(appt, new_stage)))
-        logging.info(f"[Simulação SMS] {appt['smsLogs'][-1]['message']}")
+    if new_stage != booking["stage_index"]:
+        db.table("bookings").update({"stage_index": new_stage}).eq("id", appointment_id).execute()
+        # A entrada correspondente em booking_status_history é criada
+        # automaticamente pela trigger bookings_log_stage_change (ver
+        # supabase_schema.sql), equivalente ao antigo stage_sms()/smsLogs.
+
+    appt = _fetch_appointment(appointment_id)
     return appt
 
 
-# Credenciais configuráveis via variáveis de ambiente (ver backend/.env.example)
-ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin@2043")
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "monitor.informatica25@gmail.com")
-ADMIN_TOKENS = set()
-
-
-class AdminLoginRequest(BaseModel):
-    username: str
-    password: str
-
-
-def require_admin(authorization):
-    if not authorization or not authorization.startswith("Bearer ") or authorization[7:] not in ADMIN_TOKENS:
+# ---------------------------------------------------------------------------
+# Admin
+# ---------------------------------------------------------------------------
+def require_admin(authorization: Optional[str]) -> str:
+    if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Acesso restrito ao administrador.")
+    token = authorization[7:]
+
+    db = get_admin_client()
+    try:
+        user = db.auth.get_user(token).user
+    except Exception:
+        raise HTTPException(status_code=401, detail="Acesso restrito ao administrador.")
+    if not user:
+        raise HTTPException(status_code=401, detail="Acesso restrito ao administrador.")
+
+    profile = db.table("profiles").select("role").eq("id", user.id).maybe_single().execute().data
+    if not profile or profile.get("role") != "admin":
+        raise HTTPException(status_code=401, detail="Acesso restrito ao administrador.")
+    return user.id
 
 
 @api_router.post("/admin/login")
 async def admin_login(body: AdminLoginRequest):
-    valid_user = body.username in (ADMIN_USERNAME, ADMIN_EMAIL)
-    valid_password = secrets.compare_digest(body.password.encode(), ADMIN_PASSWORD.encode())
-    if not (valid_user and valid_password):
+    settings = get_settings()
+    email = settings.admin_email if body.username == settings.admin_username else body.username
+
+    auth = get_auth_client()
+    try:
+        res = auth.auth.sign_in_with_password({"email": email, "password": body.password})
+    except Exception:
         raise HTTPException(status_code=401, detail="Usuário ou senha inválidos.")
-    token = f"admin-{secrets.token_urlsafe(32)}"
-    ADMIN_TOKENS.add(token)
+
+    db = get_admin_client()
+    profile = (
+        db.table("profiles").select("role,name,email").eq("id", res.user.id).maybe_single().execute().data
+    )
+    if not profile or profile.get("role") != "admin":
+        raise HTTPException(status_code=401, detail="Usuário ou senha inválidos.")
+
     return {
         "success": True,
-        "token": token,
-        "user": {"username": ADMIN_USERNAME, "name": "Administrador", "email": ADMIN_EMAIL},
+        "token": res.session.access_token,
+        "user": {
+            "username": settings.admin_username,
+            "name": profile.get("name") or "Administrador",
+            "email": profile.get("email") or email,
+        },
     }
 
 
 @api_router.post("/admin/logout")
 async def admin_logout(authorization: Optional[str] = Header(None)):
+    # Melhor esforço: revoga a sessão associada a este token no GoTrue. Como
+    # o access token é um JWT stateless, ele continua válido (assinatura
+    # intacta) até expirar naturalmente — revogar a sessão impede a emissão
+    # de NOVOS tokens via refresh, mas não garante invalidação imediata do
+    # token atual em todo provedor. Para expiração mais curta, ajuste "JWT
+    # expiry limit" em Supabase Dashboard > Authentication > Sessions.
     if authorization and authorization.startswith("Bearer "):
-        ADMIN_TOKENS.discard(authorization[7:])
+        token = authorization[7:]
+        try:
+            get_admin_client().auth.admin.sign_out(token, "global")
+        except Exception as exc:
+            logger.warning("Falha ao invalidar sessão admin: %s", exc)
     return {"success": True}
 
 
 @api_router.get("/admin/overview")
 async def admin_overview(authorization: Optional[str] = Header(None)):
     require_admin(authorization)
-    appts = sorted(APPOINTMENTS.values(), key=lambda a: a["createdAt"], reverse=True)
+    db = get_admin_client()
+
+    bookings = (
+        db.table("bookings")
+        .select("*, vehicles(make,model,plate), profiles(name,phone)")
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    )
+
+    appts = []
+    for booking in bookings:
+        services = (
+            db.table("booking_services")
+            .select("service_id,service_name,price_cents,duration_minutes")
+            .eq("booking_id", booking["id"])
+            .execute()
+            .data
+        )
+        history = (
+            db.table("booking_status_history")
+            .select("id,message,created_at")
+            .eq("booking_id", booking["id"])
+            .order("created_at")
+            .execute()
+            .data
+        )
+        appts.append(_booking_to_dict(booking, services, history))
+
+    mechanics = db.table("mechanics").select("id,name,specialty,available").order("name").execute().data
+
+    last_stage = len(_stage_names()) - 1
     stats = {
         "total": len(appts),
-        "emManutencao": sum(1 for a in appts if 1 <= a["statusIndex"] <= 3),
+        "emManutencao": sum(1 for a in appts if 1 <= a["statusIndex"] <= last_stage - 1),
         "aguardando": sum(1 for a in appts if a["statusIndex"] == 0),
-        "prontos": sum(1 for a in appts if a["statusIndex"] == len(STAGES) - 1),
-        "mecanicosDisponiveis": sum(1 for m in MECHANICS if m["available"]),
-        "mecanicosTotal": len(MECHANICS),
+        "prontos": sum(1 for a in appts if a["statusIndex"] == last_stage),
+        "mecanicosDisponiveis": sum(1 for m in mechanics if m["available"]),
+        "mecanicosTotal": len(mechanics),
     }
+
     servicos = {}
-    for a in appts:
-        for s in a["services"]:
-            entry = servicos.setdefault(s["name"], {"name": s["name"], "count": 0, "duration": s.get("duration", "")})
+    for appt in appts:
+        for s in appt["services"]:
+            entry = servicos.setdefault(s["name"], {"name": s["name"], "count": 0, "duration": s["duration"]})
             entry["count"] += 1
+
     return {
         "stats": stats,
         "appointments": appts,
-        "mechanics": MECHANICS,
+        "mechanics": mechanics,
         "services": list(servicos.values()),
     }
 
@@ -333,11 +506,33 @@ async def admin_overview(authorization: Optional[str] = Header(None)):
 @api_router.post("/admin/mechanics/{mechanic_id}/toggle")
 async def toggle_mechanic(mechanic_id: str, authorization: Optional[str] = Header(None)):
     require_admin(authorization)
-    for m in MECHANICS:
-        if m["id"] == mechanic_id:
-            m["available"] = not m["available"]
-            return m
-    raise HTTPException(status_code=404, detail="Mecânico não encontrado.")
+
+    # mechanics.id é UUID no Postgres; um id malformado faria a query abaixo
+    # falhar com erro de sintaxe no banco em vez de simplesmente não achar
+    # nada, então validamos o formato antes de consultar.
+    try:
+        uuid_lib.UUID(mechanic_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Mecânico não encontrado.")
+
+    db = get_admin_client()
+    mechanic = db.table("mechanics").select("*").eq("id", mechanic_id).maybe_single().execute().data
+    if not mechanic:
+        raise HTTPException(status_code=404, detail="Mecânico não encontrado.")
+
+    updated = (
+        db.table("mechanics")
+        .update({"available": not mechanic["available"]})
+        .eq("id", mechanic_id)
+        .execute()
+        .data[0]
+    )
+    return {
+        "id": updated["id"],
+        "name": updated["name"],
+        "specialty": updated["specialty"],
+        "available": updated["available"],
+    }
 
 
 app.include_router(api_router)
@@ -345,13 +540,7 @@ app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=get_settings().cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)

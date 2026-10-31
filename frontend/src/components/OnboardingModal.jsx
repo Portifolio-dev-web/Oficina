@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { X, Car, ShieldCheck, MessageSquareText, Loader2 } from "lucide-react";
+import { X, Car, ShieldCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { sendOtp, verifyOtp, getMakes, getModels } from "@/lib/api";
 
@@ -67,10 +67,6 @@ export default function OnboardingModal({ open, onClose, onSuccess }) {
     try {
       const res = await sendOtp(form.phone);
       toast.success(res.message);
-      toast(`[Simulação SMS] Seu código é: ${res.testCode}`, {
-        icon: <MessageSquareText className="h-4 w-4" />,
-        duration: 10000,
-      });
       setStep("otp");
       setCountdown(60);
       setTimeout(() => refs.current[0]?.focus(), 250);
