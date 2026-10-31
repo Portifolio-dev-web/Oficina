@@ -2,13 +2,8 @@ services:
   backend:
     build:
       context: ./backend
-    environment:
-      CORS_ORIGINS: ${CORS_ORIGINS:-*}
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-monitor.informatica25@gmail.com}
-      SUPABASE_URL: ${SUPABASE_URL}
-      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
-      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+    env_file:
+      - ./backend/.env
     ports:
       - "8000:8000"
     healthcheck:

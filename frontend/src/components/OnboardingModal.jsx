@@ -26,7 +26,10 @@ export default function OnboardingModal({ open, onClose, onSuccess }) {
   const refs = useRef([]);
 
   useEffect(() => {
-    if (open) getMakes().then((d) => setMakes(d.makes)).catch(() => {});
+    if (open)
+      getMakes()
+        .then((d) => setMakes(d.makes))
+        .catch(() => toast.error("Não foi possível carregar as marcas de veículo."));
   }, [open]);
 
   useEffect(() => {
@@ -51,8 +54,12 @@ export default function OnboardingModal({ open, onClose, onSuccess }) {
     setForm((f) => ({ ...f, make, model: "" }));
     setModels([]);
     if (make) {
-      const d = await getModels(make);
-      setModels(d.models);
+      try {
+        const d = await getModels(make);
+        setModels(d.models);
+      } catch {
+        toast.error("Não foi possível carregar os modelos dessa marca.");
+      }
     }
   };
 
