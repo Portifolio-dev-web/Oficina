@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Loader2, Car, Clock, CheckCircle2, Users, Wrench, ChevronLeft, ChevronRight,
-  MessageSquareText, CalendarDays, ClipboardList, Lock, LogOut, Trash2, UserPlus,
+  Mail, CalendarDays, ClipboardList, Lock, LogOut, Trash2, UserPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -76,9 +76,9 @@ export default function Admin() {
     try {
       const updated = await updateStage(appt.id, stage, token);
       if (updated.statusIndex !== appt.statusIndex) {
-        const last = updated.smsLogs[updated.smsLogs.length - 1];
-        toast(`[Simulação SMS → ${updated.user.name.split(" ")[0]}] ${last.message}`, {
-          icon: <MessageSquareText className="h-4 w-4" />,
+        const last = updated.notificationLogs[updated.notificationLogs.length - 1];
+        toast(`[E-mail → ${updated.user.name.split(" ")[0]}] ${last.message}`, {
+          icon: <Mail className="h-4 w-4" />,
           duration: 8000,
         });
       }
@@ -225,7 +225,7 @@ export default function Admin() {
         <div>
           <h1 className="font-display text-3xl font-extrabold tracking-tight md:text-4xl">Painel da Oficina</h1>
           <p className="mt-2 text-sm text-slate-400">
-            Gerencie os veículos, atualize etapas (com envio automático de SMS) e acompanhe a equipe.
+            Gerencie os veículos, atualize etapas (com envio automático de e-mail) e acompanhe a equipe.
           </p>
         </div>
         <button
@@ -282,7 +282,7 @@ export default function Admin() {
                       <StatusBadge label={a.status} tone={stageTone(a.statusIndex)} />
                     </div>
                     <p className="mt-1.5 text-xs text-slate-400">
-                      {a.user.name} · {a.user.phone}
+                      {a.user.name} · {a.user.email}
                     </p>
                     <p className="mt-1 flex flex-wrap items-center gap-3 text-xs text-slate-500">
                       <span className="flex items-center gap-1">
@@ -313,7 +313,7 @@ export default function Admin() {
                       className="flex h-9 items-center gap-1.5 rounded-lg bg-emerald-500 px-3.5 text-xs font-bold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-30"
                     >
                       {busyId === a.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
-                      Avançar + SMS
+                      Avançar + e-mail
                     </button>
                     <Link
                       data-testid={`btn-admin-track-${a.id}`}

@@ -32,7 +32,7 @@ def test_different_keys_have_independent_counters():
 
 def test_different_buckets_have_independent_counters():
     _hits.clear()
-    check_rate_limit("send-otp:ip", "same-value", limit=1, window_seconds=60)
+    check_rate_limit("register-send-code:ip", "same-value", limit=1, window_seconds=60)
     # Mesmo valor de chave, mas rota/propósito diferente: não compartilha contador.
     check_rate_limit("admin-login:ip", "same-value", limit=1, window_seconds=60)
 

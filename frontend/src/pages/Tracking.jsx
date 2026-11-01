@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Check, Loader2, MessageSquareText, Activity, Car, CalendarDays, Wrench, SearchX,
+  Check, Loader2, Mail, Activity, Car, CalendarDays, Wrench, SearchX,
 } from "lucide-react";
 import { getTracking } from "@/lib/api";
 import { STAGES } from "@/constants/data";
@@ -110,14 +110,14 @@ export default function Tracking() {
           <Activity className="h-4 w-4" /> Status
         </button>
         <button
-          data-testid="tab-sms-feed"
-          onClick={() => setTab("sms")}
+          data-testid="tab-email-feed"
+          onClick={() => setTab("email")}
           className={`flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition-all ${
-            tab === "sms" ? "bg-emerald-500 text-white" : "border border-slate-700 text-slate-300 hover:border-slate-500"
+            tab === "email" ? "bg-emerald-500 text-white" : "border border-slate-700 text-slate-300 hover:border-slate-500"
           }`}
         >
-          <MessageSquareText className="h-4 w-4" /> SMS
-          <span className="rounded-full bg-slate-950/40 px-2 py-0.5 text-[11px] font-bold">{appt.smsLogs.length}</span>
+          <Mail className="h-4 w-4" /> E-mail
+          <span className="rounded-full bg-slate-950/40 px-2 py-0.5 text-[11px] font-bold">{appt.notificationLogs.length}</span>
         </button>
       </div>
 
@@ -202,30 +202,30 @@ export default function Tracking() {
           </motion.div>
         ) : (
           <motion.div
-            key="sms"
+            key="email"
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.22 }}
-            data-testid="sms-feed-list"
+            data-testid="email-feed-list"
             className="mt-8 space-y-3"
           >
-            {[...appt.smsLogs].reverse().map((sms) => (
+            {[...appt.notificationLogs].reverse().map((notification) => (
               <motion.div
-                key={sms.id}
+                key={notification.id}
                 initial={{ opacity: 0, x: -14 }}
                 animate={{ opacity: 1, x: 0 }}
                 className="flex gap-3 rounded-2xl border border-slate-700 bg-slate-800/60 p-4"
               >
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-400">
-                  <MessageSquareText className="h-4 w-4" />
+                  <Mail className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-bold text-slate-300">Oficina Fácil</span>
-                    <span className="font-mono2 text-[11px] text-slate-500">{fmtTs(sms.timestamp)}</span>
+                    <span className="font-mono2 text-[11px] text-slate-500">{fmtTs(notification.timestamp)}</span>
                   </div>
-                  <p className="mt-1 text-sm leading-relaxed text-slate-300">{sms.message}</p>
+                  <p className="mt-1 text-sm leading-relaxed text-slate-300">{notification.message}</p>
                 </div>
               </motion.div>
             ))}

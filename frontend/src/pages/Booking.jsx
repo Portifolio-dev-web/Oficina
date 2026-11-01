@@ -45,7 +45,7 @@ export default function Booking() {
         </span>
         <h1 className="font-display text-2xl font-bold">Identifique-se para agendar</h1>
         <p className="mt-3 text-sm leading-relaxed text-slate-400">
-          Crie sua conta em segundos com verificação por SMS e cadastre seu veículo para começar.
+          Crie sua conta em segundos com verificação por e-mail e cadastre seu veículo para começar.
         </p>
         <button
           data-testid="btn-booking-login"
@@ -65,22 +65,22 @@ export default function Booking() {
     setLoading(true);
     try {
       const payload = {
-        user: session.user,
         vehicle: session.user.vehicle,
         services: selectedServices.map((s) => ({ id: s.id, name: s.name, price: s.price, duration: s.duration })),
         date,
         time,
         period: TIME_SLOTS[period].label,
       };
-      const appt = await createAppointment(payload);
+      const appt = await createAppointment(payload, session.token);
       toast.success("Agendamento confirmado!");
-      // A mensagem vem do backend (notifications.send_sms) — mesmo texto que
-      // foi, de fato, enviado por SMS (ou simulado, se nenhum provedor
-      // estiver configurado; ver backend/.env.example). Evita duplicar aqui
-      // um texto que poderia ficar desatualizado em relação ao que sai.
-      const lastSms = appt.smsLogs?.[appt.smsLogs.length - 1];
-      if (lastSms) {
-        toast(lastSms.message, {
+      // A mensagem vem do backend (notifications.send_status_email) — mesmo
+      // texto que foi, de fato, enviado por e-mail (ou simulado, se nenhum
+      // provedor estiver configurado; ver backend/.env.example). Evita
+      // duplicar aqui um texto que poderia ficar desatualizado em relação
+      // ao que sai.
+      const lastNotification = appt.notificationLogs?.[appt.notificationLogs.length - 1];
+      if (lastNotification) {
+        toast(lastNotification.message, {
           icon: <MessageSquareText className="h-4 w-4" />,
           duration: 9000,
         });
@@ -98,8 +98,12 @@ export default function Booking() {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
         <h1 className="font-display text-3xl font-extrabold tracking-tight md:text-4xl">Agendar serviço</h1>
         <p className="mt-2 text-sm text-slate-400">
-          {session.user.vehicle.make} {session.user.vehicle.model}
-          {session.user.vehicle.plate ? ` · ${session.user.vehicle.plate}` : ""} — selecione os serviços desejados.
+          {session.user.vehicle
+            ? `${session.user.vehicle.make} ${session.user.vehicle.model}${
+                session.user.vehicle.plate ? ` · ${session.user.vehicle.plate}` : ""
+              } — `
+            : ""}
+          selecione os serviços desejados.
         </p>
       </motion.div>
 

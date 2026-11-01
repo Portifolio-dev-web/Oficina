@@ -1,18 +1,21 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Header, Request
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
+import hashlib
+import hmac
 import logging
-import re
+import secrets
 import uuid as uuid_lib
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
 
 from settings import get_settings
 from supabase_client import get_admin_client, get_auth_client
 from rate_limit import check_rate_limit, client_ip
-from notifications import send_sms
+from notifications import send_status_email, send_verification_email
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -33,11 +36,12 @@ logger = logging.getLogger(__name__)
 # Este backend não guarda mais nenhum estado em memória — toda leitura e
 # escrita (perfis, veículos, catálogo de serviços, mecânicos, agendamentos e
 # histórico de rastreamento) passa pelas tabelas criadas em supabase_schema.sql.
-# A autenticação de clientes usa o fluxo real de Phone OTP do Supabase Auth
-# (sign_in_with_otp / verify_otp) — é necessário configurar um provedor de SMS
-# na dashboard do Supabase (Authentication > Providers > Phone) para que o
-# código realmente seja enviado. O login de administrador usa email/senha do
-# Supabase Auth, com profiles.role = 'admin' (ver backend/scripts/create_admin.py).
+# A autenticação de clientes usa e-mail + senha do Supabase Auth: o cadastro
+# passa por um código de verificação de 6 dígitos enviado por e-mail via
+# Resend (/auth/register/send-code, /auth/register/verify-code — código
+# guardado com hash em email_verification_tokens, ver supabase_schema.sql); o
+# login (/auth/login) é direto com sign_in_with_password, como o do
+# administrador (profiles.role = 'admin', ver backend/scripts/create_admin.py).
 
 
 @lru_cache
@@ -61,7 +65,7 @@ def _booking_to_dict(booking: dict, services: List[dict], history: List[dict]) -
     profile = booking.get("profiles") or {}
     return {
         "id": booking["id"],
-        "user": {"name": profile.get("name", ""), "phone": profile.get("phone", "")},
+        "user": {"name": profile.get("name", ""), "email": profile.get("email", "")},
         "vehicle": {
             "make": vehicle.get("make", ""),
             "model": vehicle.get("model", ""),
@@ -82,7 +86,7 @@ def _booking_to_dict(booking: dict, services: List[dict], history: List[dict]) -
         "statusIndex": booking["stage_index"],
         "status": _stage_names().get(booking["stage_index"], ""),
         "createdAt": booking["created_at"],
-        "smsLogs": [
+        "notificationLogs": [
             {"id": h["id"], "message": h["message"], "timestamp": h["created_at"]}
             for h in history
         ],
@@ -93,7 +97,7 @@ def _fetch_appointment(booking_id: str) -> Optional[dict]:
     db = get_admin_client()
     booking = (
         db.table("bookings")
-        .select("*, vehicles(make,model,plate), profiles(name,phone)")
+        .select("*, vehicles(make,model,plate), profiles(name,email)")
         .eq("id", booking_id)
         .maybe_single()
         .execute()
@@ -120,15 +124,15 @@ def _fetch_appointment(booking_id: str) -> Optional[dict]:
 
 
 async def _notify_latest_stage(appt: Optional[dict]) -> None:
-    """Envia (ou simula, conforme notifications.send_sms) a mensagem da etapa
-    mais recente do agendamento para o telefone do cliente."""
-    if not appt or not appt.get("smsLogs"):
+    """Envia (ou simula, conforme notifications.send_status_email) a mensagem
+    da etapa mais recente do agendamento para o e-mail do cliente."""
+    if not appt or not appt.get("notificationLogs"):
         return
-    phone = (appt.get("user") or {}).get("phone")
-    if not phone:
+    email = (appt.get("user") or {}).get("email")
+    if not email:
         return
-    message = appt["smsLogs"][-1]["message"]
-    await send_sms(_to_e164(phone), message, booking_id=appt["id"])
+    message = appt["notificationLogs"][-1]["message"]
+    await send_status_email(email, message, booking_id=appt["id"])
 
 
 def _get_or_create_vehicle(owner_id: str, vehicle: Optional[dict]) -> str:
@@ -159,26 +163,72 @@ def _get_or_create_vehicle(owner_id: str, vehicle: Optional[dict]) -> str:
     return inserted[0]["id"]
 
 
-def _to_e164(phone: str, default_country_code: str = "55") -> str:
-    """Normaliza o telefone mascarado do frontend ("(11) 99999-8888") para o
-    formato E.164 exigido pelo Supabase Auth ("+5511999998888"). Assume Brasil
-    quando o usuário não digita o código do país."""
-    digits = re.sub(r"\D", "", phone)
-    if phone.strip().startswith("+"):
-        return "+" + digits
-    return f"+{default_country_code}{digits}"
+def _get_latest_vehicle(owner_id: str) -> Optional[dict]:
+    # frontend/src/pages/Booking.jsx mostra o veículo "ativo" do cliente a
+    # partir de session.user.vehicle — devolvemos aqui o mais recente
+    # cadastrado por ele (cadastro e login precisam preencher esse campo).
+    db = get_admin_client()
+    rows = (
+        db.table("vehicles")
+        .select("make,model,plate")
+        .eq("owner_id", owner_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    return rows[0] if rows else None
 
 
-def _get_profile_by_phone(phone: str) -> Optional[dict]:
+def _get_profile_by_email(email: str) -> Optional[dict]:
     db = get_admin_client()
     return (
         db.table("profiles")
-        .select("id,name,phone")
-        .eq("phone", phone)
+        .select("id,name,email")
+        .eq("email", email)
         .maybe_single()
         .execute()
         .data
     )
+
+
+def _generate_code() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def _hash_code(code: str) -> str:
+    # SEGURANÇA: só o hash do código vai para o banco (email_verification_tokens)
+    # — um dump/leak da tabela não expõe códigos válidos.
+    return hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+
+def require_client(authorization: Optional[str]) -> str:
+    """Valida o Bearer token e retorna o id do cliente autenticado.
+
+    SEGURANÇA (migração SMS->e-mail): /appointments identificava o cliente
+    por um campo "phone" enviado no próprio corpo da requisição, sem
+    autenticação nenhuma — qualquer pessoa que soubesse (ou adivinhasse) o
+    telefone de outra conta podia agendar em nome dela. Agora exige o mesmo
+    Bearer token de sessão já usado por require_admin()/update_status().
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401, detail="Cliente não autenticado. Faça login antes de agendar."
+        )
+    token = authorization[7:]
+
+    db = get_admin_client()
+    try:
+        user = db.auth.get_user(token).user
+    except Exception:
+        raise HTTPException(
+            status_code=401, detail="Cliente não autenticado. Faça login antes de agendar."
+        )
+    if not user:
+        raise HTTPException(
+            status_code=401, detail="Cliente não autenticado. Faça login antes de agendar."
+        )
+    return user.id
 
 
 # ---------------------------------------------------------------------------
@@ -196,28 +246,28 @@ class VehicleInput(BaseModel):
     plate: Optional[str] = Field(None, max_length=10)
 
 
-class UserInput(BaseModel):
-    phone: Optional[str] = Field(None, max_length=20)
-
-
 class ServiceSelection(BaseModel):
     id: Optional[str] = Field(None, max_length=64)
 
 
-class SendOtpRequest(BaseModel):
-    phone: str = Field(..., max_length=20)
+class RegisterSendCodeRequest(BaseModel):
+    email: EmailStr
 
 
-class VerifyOtpRequest(BaseModel):
-    phone: str = Field(..., max_length=20)
+class RegisterVerifyCodeRequest(BaseModel):
+    email: EmailStr
     code: str = Field(..., max_length=10)
-    name: Optional[str] = Field(None, max_length=120)
-    password: Optional[str] = Field(None, max_length=128)
+    name: str = Field(..., max_length=120)
+    password: str = Field(..., min_length=4, max_length=128)
     vehicle: Optional[VehicleInput] = None
 
 
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., max_length=128)
+
+
 class AppointmentCreate(BaseModel):
-    user: UserInput
     vehicle: VehicleInput
     services: List[ServiceSelection] = Field(..., max_length=20)
     date: str = Field(..., max_length=10)
@@ -250,63 +300,158 @@ async def root():
     return {"message": "Oficina Fácil API"}
 
 
-@api_router.post("/auth/send-otp")
-async def send_otp(body: SendOtpRequest, request: Request):
-    # SEGURANÇA (auditoria, item S4): limite por IP (disparo em massa) e por
-    # telefone (não deixa inundar de SMS um número específico).
-    check_rate_limit("send-otp:ip", client_ip(request), limit=5, window_seconds=60)
-    check_rate_limit("send-otp:phone", body.phone, limit=10, window_seconds=900)
+@api_router.post("/auth/register/send-code")
+async def register_send_code(body: RegisterSendCodeRequest, request: Request):
+    # SEGURANÇA (migração SMS->e-mail, equivalente ao item S4 original):
+    # limite por IP (disparo em massa) e por e-mail (não deixa inundar de
+    # e-mails uma mesma conta).
+    email = body.email.lower()
+    check_rate_limit("register-send-code:ip", client_ip(request), limit=5, window_seconds=60)
+    check_rate_limit("register-send-code:email", email, limit=5, window_seconds=900)
 
-    auth = get_auth_client()
-    try:
-        auth.auth.sign_in_with_otp({"phone": _to_e164(body.phone)})
-    except Exception as exc:
-        # SEGURANÇA (auditoria, item S8): não logar o telefone do cliente.
-        logger.warning("Falha ao enviar OTP: %s", exc)
+    if _get_profile_by_email(email):
         raise HTTPException(
-            status_code=400,
-            detail="Não foi possível enviar o código. Verifique o número e tente novamente.",
+            status_code=409, detail="Este e-mail já está cadastrado. Faça login."
         )
-    return {"success": True, "message": "Código SMS enviado com sucesso!"}
-
-
-@api_router.post("/auth/verify-otp")
-async def verify_otp(body: VerifyOtpRequest, request: Request):
-    # SEGURANÇA (auditoria, item S4): sem isso, o código de 6 dígitos podia
-    # ser testado por força bruta sem limite nenhum.
-    check_rate_limit("verify-otp:ip", client_ip(request), limit=10, window_seconds=60)
-    check_rate_limit("verify-otp:phone", body.phone, limit=10, window_seconds=900)
-
-    auth = get_auth_client()
-    try:
-        res = auth.auth.verify_otp(
-            {"phone": _to_e164(body.phone), "token": body.code, "type": "sms"}
-        )
-    except Exception:
-        raise HTTPException(status_code=400, detail="Código inválido ou expirado.")
-
-    user = res.user
-    if not user:
-        raise HTTPException(status_code=400, detail="Código inválido ou expirado.")
 
     db = get_admin_client()
-    if body.name:
-        db.table("profiles").update({"name": body.name}).eq("id", user.id).execute()
+    code = _generate_code()
+    db.table("email_verification_tokens").insert(
+        {
+            "email": email,
+            "code_hash": _hash_code(code),
+            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
+        }
+    ).execute()
+
+    sent = await send_verification_email(email, code)
+    if not sent:
+        raise HTTPException(
+            status_code=502, detail="Não foi possível enviar o e-mail. Tente novamente."
+        )
+
+    response = {"success": True, "message": "Código enviado para seu e-mail!"}
+    if not get_settings().resend_api_key:
+        # MODO DEMONSTRAÇÃO: sem RESEND_API_KEY, nenhum e-mail de verdade sai
+        # (ver notifications.send_verification_email) — devolver o código na
+        # resposta é o que permite o fluxo (e os testes de integração)
+        # continuarem funcionáveis sem conta num provedor real, igual ao
+        # resto do projeto. Nunca ocorre com um provedor de e-mail real
+        # configurado.
+        response["code"] = code
+    return response
+
+
+@api_router.post("/auth/register/verify-code")
+async def register_verify_code(body: RegisterVerifyCodeRequest, request: Request):
+    # SEGURANÇA (migração SMS->e-mail, equivalente ao item S4 original): sem
+    # isso, o código de 6 dígitos podia ser testado por força bruta sem
+    # limite nenhum.
+    email = body.email.lower()
+    check_rate_limit("register-verify-code:ip", client_ip(request), limit=10, window_seconds=60)
+    check_rate_limit("register-verify-code:email", email, limit=10, window_seconds=900)
+
+    db = get_admin_client()
+    token_row = (
+        db.table("email_verification_tokens")
+        .select("id,code_hash,expires_at,consumed_at,attempts")
+        .eq("email", email)
+        .is_("consumed_at", "null")
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+        .data
+    )
+    token_row = token_row[0] if token_row else None
+
+    invalid = HTTPException(status_code=400, detail="Código inválido ou expirado.")
+    if not token_row or token_row["attempts"] >= 5:
+        raise invalid
+    if datetime.now(timezone.utc) >= datetime.fromisoformat(token_row["expires_at"]):
+        raise invalid
+    if not hmac.compare_digest(token_row["code_hash"], _hash_code(body.code)):
+        db.table("email_verification_tokens").update(
+            {"attempts": token_row["attempts"] + 1}
+        ).eq("id", token_row["id"]).execute()
+        raise invalid
+
+    db.table("email_verification_tokens").update(
+        {"consumed_at": datetime.now(timezone.utc).isoformat()}
+    ).eq("id", token_row["id"]).execute()
+
+    if _get_profile_by_email(email):
+        # Corrida rara: duas verificações do mesmo código quase simultâneas.
+        raise HTTPException(status_code=409, detail="Este e-mail já está cadastrado. Faça login.")
+
+    try:
+        created = db.auth.admin.create_user(
+            {
+                "email": email,
+                "password": body.password,
+                "email_confirm": True,  # já confirmamos nós mesmos, via o código acima
+                "user_metadata": {"name": body.name},
+            }
+        )
+    except Exception as exc:
+        logger.warning("Falha ao criar usuário após verificação de e-mail: %s", exc)
+        raise HTTPException(status_code=400, detail="Não foi possível concluir o cadastro.")
+
+    user_id = created.user.id
+    db.table("profiles").update({"name": body.name}).eq("id", user_id).execute()
 
     if body.vehicle and body.vehicle.make:
-        _get_or_create_vehicle(user.id, body.vehicle.model_dump())
+        _get_or_create_vehicle(user_id, body.vehicle.model_dump())
 
-    if body.password:
-        try:
-            db.auth.admin.update_user_by_id(user.id, {"password": body.password})
-        except Exception as exc:
-            logger.warning("Não foi possível definir senha para %s: %s", user.id, exc)
+    auth = get_auth_client()
+    try:
+        res = auth.auth.sign_in_with_password({"email": email, "password": body.password})
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Cadastro concluído, mas não foi possível entrar automaticamente. Faça login.",
+        )
 
-    profile = db.table("profiles").select("name,phone").eq("id", user.id).single().execute().data
+    profile = db.table("profiles").select("name,email").eq("id", user_id).single().execute().data
     return {
         "success": True,
         "token": res.session.access_token if res.session else None,
-        "user": {"id": user.id, "phone": profile["phone"], "name": profile["name"]},
+        "user": {
+            "id": user_id,
+            "email": profile["email"],
+            "name": profile["name"],
+            "vehicle": _get_latest_vehicle(user_id),
+        },
+    }
+
+
+@api_router.post("/auth/login")
+async def login(body: LoginRequest, request: Request):
+    # SEGURANÇA: mesmo limite por IP/conta já aplicado ao login do admin
+    # (item S4 da auditoria original) — contra força bruta de senha.
+    email = body.email.lower()
+    check_rate_limit("login:ip", client_ip(request), limit=10, window_seconds=60)
+    check_rate_limit("login:email", email, limit=10, window_seconds=900)
+
+    auth = get_auth_client()
+    try:
+        res = auth.auth.sign_in_with_password({"email": email, "password": body.password})
+    except Exception:
+        raise HTTPException(status_code=401, detail="E-mail ou senha inválidos.")
+
+    db = get_admin_client()
+    profile = db.table("profiles").select("name,email").eq("id", res.user.id).maybe_single().execute().data
+    if not profile:
+        raise HTTPException(status_code=401, detail="E-mail ou senha inválidos.")
+
+    return {
+        "success": True,
+        "token": res.session.access_token if res.session else None,
+        "user": {
+            "id": res.user.id,
+            "email": profile["email"],
+            "name": profile["name"],
+            "vehicle": _get_latest_vehicle(res.user.id),
+        },
     }
 
 
@@ -337,16 +482,13 @@ async def get_models(make: str):
 
 
 @api_router.post("/appointments")
-async def create_appointment(body: AppointmentCreate):
+async def create_appointment(
+    body: AppointmentCreate, authorization: Optional[str] = Header(None)
+):
+    customer_id = require_client(authorization)
     db = get_admin_client()
-    phone = body.user.phone
-    profile = _get_profile_by_phone(phone) if phone else None
-    if not profile:
-        raise HTTPException(
-            status_code=401, detail="Cliente não autenticado. Faça login antes de agendar."
-        )
 
-    vehicle_id = _get_or_create_vehicle(profile["id"], body.vehicle.model_dump())
+    vehicle_id = _get_or_create_vehicle(customer_id, body.vehicle.model_dump())
 
     service_ids = [s.id for s in body.services if s.id]
     if not service_ids:
@@ -369,7 +511,7 @@ async def create_appointment(body: AppointmentCreate):
         db.table("bookings")
         .insert(
             {
-                "customer_id": profile["id"],
+                "customer_id": customer_id,
                 "vehicle_id": vehicle_id,
                 "scheduled_date": body.date,
                 "scheduled_time": body.time,
@@ -435,7 +577,7 @@ async def update_status(
         db.table("bookings").update({"stage_index": new_stage}).eq("id", appointment_id).execute()
         # A entrada correspondente em booking_status_history é criada
         # automaticamente pela trigger bookings_log_stage_change (ver
-        # supabase_schema.sql), equivalente ao antigo stage_sms()/smsLogs.
+        # supabase_schema.sql), equivalente ao antigo stage_sms()/notificationLogs.
 
     appt = _fetch_appointment(appointment_id)
     if stage_changed:
@@ -523,7 +665,7 @@ async def admin_overview(authorization: Optional[str] = Header(None)):
 
     bookings = (
         db.table("bookings")
-        .select("*, vehicles(make,model,plate), profiles(name,phone)")
+        .select("*, vehicles(make,model,plate), profiles(name,email)")
         .order("created_at", desc=True)
         .execute()
         .data

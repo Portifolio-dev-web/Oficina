@@ -59,15 +59,18 @@ comment on function public.set_updated_at() is
 -- =============================================================================
 -- 2. PERFIS (clientes e administradores)
 -- =============================================================================
--- Estende auth.users (1:1). O telefone é o identificador de negócio usado
--- hoje no fluxo de OTP (USERS dict, chave = phone, no backend atual).
+-- Estende auth.users (1:1). O e-mail é o identificador de login de todo
+-- usuário (cliente e admin) desde a migração do fluxo de OTP por SMS para
+-- verificação por e-mail (ver backend/server.py: /auth/register/*,
+-- /auth/login). O telefone deixou de ser usado para autenticação — fica
+-- como dado de contato opcional.
 -- `role` define o nível de acesso usado nas policies de RLS mais abaixo.
 create table public.profiles (
   id          uuid primary key references auth.users (id) on delete cascade,
   role        text not null default 'cliente' check (role in ('cliente', 'admin')),
   name        text not null default '',
-  phone       text unique,                     -- ex.: "(11) 99999-8888" — login do cliente hoje
-  email       text unique,                      -- login do admin hoje (ADMIN_EMAIL)
+  phone       text unique,                     -- contato opcional, ex.: "(11) 99999-8888"
+  email       text not null unique,             -- identificador de login (cliente e admin)
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );
@@ -302,27 +305,27 @@ create index booking_services_booking_id_idx on public.booking_services (booking
 
 
 -- =============================================================================
--- 10. HISTÓRICO DE RASTREAMENTO / SMS — espelha appointment["smsLogs"]
+-- 10. HISTÓRICO DE RASTREAMENTO / NOTIFICAÇÕES — espelha appointment["notificationLogs"]
 -- =============================================================================
 create table public.booking_status_history (
   id           uuid primary key default gen_random_uuid(),
   booking_id   text not null references public.bookings (id) on delete cascade,
   stage_index  smallint not null references public.tracking_stages (stage_index),
-  message      text not null,           -- texto do "SMS" simulado exibido ao cliente
+  message      text not null,           -- texto da notificação (hoje enviada por e-mail) exibido ao cliente
   created_at   timestamptz not null default now()
 );
 
 comment on table public.booking_status_history is
-  'Linha do tempo de mudanças de etapa de um agendamento (equivalente a smsLogs no mock atual). Cliente só tem SELECT; o INSERT é feito pelo backend/trigger, nunca diretamente pelo cliente (ver seção de RLS).';
+  'Linha do tempo de mudanças de etapa de um agendamento (equivalente a notificationLogs no mock atual). Cliente só tem SELECT; o INSERT é feito pelo backend/trigger, nunca diretamente pelo cliente (ver seção de RLS).';
 
 create index booking_status_history_booking_id_idx on public.booking_status_history (booking_id);
 create index booking_status_history_created_at_idx on public.booking_status_history (booking_id, created_at);
 
 -- Trigger "bônus": sempre que o stage_index de um agendamento muda, registra
 -- automaticamente uma entrada no histórico — equivalente ao que o backend
--- Python faz manualmente hoje em update_status()/stage_sms(). Isso garante
--- que a trilha de auditoria não dependa de o código da aplicação lembrar de
--- inserir a linha de histórico.
+-- Python faz manualmente hoje em update_status()/_notify_latest_stage(). Isso
+-- garante que a trilha de auditoria não dependa de o código da aplicação
+-- lembrar de inserir a linha de histórico.
 create or replace function public.log_booking_stage_change()
 returns trigger
 language plpgsql
@@ -351,7 +354,34 @@ comment on function public.log_booking_stage_change() is
 
 
 -- =============================================================================
--- 11. ROW LEVEL SECURITY (RLS)
+-- 11. TOKENS DE VERIFICAÇÃO DE E-MAIL (cadastro) — migração do fluxo de Phone
+--     OTP do Supabase Auth para verificação por e-mail via Resend
+-- =============================================================================
+-- Guarda só o HASH do código de 6 dígitos (nunca o código em texto puro) e a
+-- validade. Diferente do Phone OTP do Supabase Auth (que criava o usuário já
+-- no envio do código), aqui o usuário em auth.users só é criado em
+-- /auth/register/verify-code, depois de o código ser confirmado — evita
+-- "contas fantasma" de cadastros nunca concluídos. Sem policy de
+-- SELECT/INSERT para clientes: só o backend (service_role) lê e escreve
+-- esta tabela.
+create table public.email_verification_tokens (
+  id           uuid primary key default gen_random_uuid(),
+  email        text not null,
+  code_hash    text not null,
+  attempts     smallint not null default 0,
+  expires_at   timestamptz not null,
+  consumed_at  timestamptz,
+  created_at   timestamptz not null default now()
+);
+
+comment on table public.email_verification_tokens is
+  'Códigos de verificação de e-mail do fluxo de cadastro (substitui o Phone OTP do Supabase Auth). Hash do código, nunca o valor em texto puro; uso único (consumed_at) e com expiração (expires_at).';
+
+create index email_verification_tokens_email_idx on public.email_verification_tokens (email, created_at desc);
+
+
+-- =============================================================================
+-- 12. ROW LEVEL SECURITY (RLS)
 -- =============================================================================
 -- Regra geral pedida:
 --   - Clientes: leem e criam apenas os PRÓPRIOS agendamentos/rastreamentos.
@@ -372,6 +402,7 @@ alter table public.tracking_stages enable row level security;
 alter table public.bookings enable row level security;
 alter table public.booking_services enable row level security;
 alter table public.booking_status_history enable row level security;
+alter table public.email_verification_tokens enable row level security;
 
 -- ---------------------------------------------------------------------------
 -- profiles
@@ -512,6 +543,14 @@ create policy "booking_status_history_admin_write"
   on public.booking_status_history for all
   using (public.is_admin())
   with check (public.is_admin());
+
+-- ---------------------------------------------------------------------------
+-- email_verification_tokens — nenhuma policy de propósito: com RLS ativo e
+-- zero policies, toda query com a chave anon/authenticated é negada por
+-- padrão. Só o backend, com a service_role key (que ignora RLS), lê/escreve
+-- aqui. Isso impede o cliente de ler o hash do próprio código ou o de
+-- qualquer outra pessoa.
+-- ---------------------------------------------------------------------------
 
 
 -- =============================================================================

@@ -12,13 +12,13 @@ class Settings:
     admin_username: str
     admin_email: str
     cors_origins: list[str]
-    # Envio real de SMS de status (roadmap: "Notificação real"). Opcional de
-    # propósito: sem as três variáveis preenchidas, notifications.send_sms()
-    # cai no modo simulado (só loga), que é o comportamento padrão deste
-    # projeto de demonstração — ver backend/.env.example.
-    twilio_account_sid: str
-    twilio_auth_token: str
-    twilio_from_number: str
+    # Envio real de e-mail (verificação de cadastro e notificação de status
+    # via Resend). Opcional de propósito: sem RESEND_API_KEY preenchida,
+    # notifications.send_email() cai no modo simulado (só loga), que é o
+    # comportamento padrão deste projeto de demonstração — ver
+    # backend/.env.example.
+    resend_api_key: str
+    resend_from_email: str
 
 
 def _require(name: str) -> str:
@@ -40,7 +40,6 @@ def get_settings() -> Settings:
         admin_username=os.environ.get("ADMIN_USERNAME", "admin"),
         admin_email=os.environ.get("ADMIN_EMAIL", "monitor.informatica25@gmail.com"),
         cors_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
-        twilio_account_sid=os.environ.get("TWILIO_ACCOUNT_SID", ""),
-        twilio_auth_token=os.environ.get("TWILIO_AUTH_TOKEN", ""),
-        twilio_from_number=os.environ.get("TWILIO_FROM_NUMBER", ""),
+        resend_api_key=os.environ.get("RESEND_API_KEY", ""),
+        resend_from_email=os.environ.get("RESEND_FROM_EMAIL", "Oficina Fácil <onboarding@resend.dev>"),
     )

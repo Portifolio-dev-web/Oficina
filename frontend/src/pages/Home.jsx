@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { useNavigate, Link } from "react-router-dom";
 import {
-  CalendarCheck, Radar, MessageSquareText, Wrench, ShieldCheck, Clock, ChevronRight, Sparkles,
+  CalendarCheck, Radar, Mail, Wrench, ShieldCheck, Clock, ChevronRight, Sparkles,
 } from "lucide-react";
 import { useSession } from "@/lib/session";
 import { SERVICE_CATEGORIES } from "@/constants/data";
@@ -35,7 +35,7 @@ export default function Home() {
             </h1>
             <p className="mt-6 max-w-lg text-base leading-relaxed text-slate-400">
               Agende serviços em minutos e acompanhe cada etapa do reparo com atualizações
-              de status e notificações por SMS — tudo em um só lugar.
+              de status e notificações por e-mail — tudo em um só lugar.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-4">
               <button
@@ -88,7 +88,7 @@ export default function Home() {
               </span>
               <div>
                 <div className="text-xs font-bold text-slate-200">Rastreio ao vivo</div>
-                <div className="text-[11px] text-slate-400">5 etapas + SMS em tempo real</div>
+                <div className="text-[11px] text-slate-400">5 etapas + e-mail em tempo real</div>
               </div>
             </motion.div>
           </motion.div>
@@ -102,8 +102,8 @@ export default function Home() {
         </motion.div>
         <div className="grid gap-6 md:grid-cols-3">
           {[
-            { icon: CalendarCheck, t: "1. Cadastre-se e agende", d: "Crie sua conta com verificação por SMS, escolha os serviços e selecione data e horário." },
-            { icon: MessageSquareText, t: "2. Receba notificações", d: "A cada mudança de etapa, você recebe um SMS com a atualização do seu veículo." },
+            { icon: CalendarCheck, t: "1. Cadastre-se e agende", d: "Crie sua conta com verificação por e-mail, escolha os serviços e selecione data e horário." },
+            { icon: Mail, t: "2. Receba notificações", d: "A cada mudança de etapa, você recebe um e-mail com a atualização do seu veículo." },
             { icon: ShieldCheck, t: "3. Acompanhe e retire", d: "Siga o rastreio ao vivo em 5 etapas e retire seu carro com garantia de qualidade." },
           ].map((s, i) => (
             <motion.div

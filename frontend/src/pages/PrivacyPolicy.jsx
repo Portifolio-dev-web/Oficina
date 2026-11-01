@@ -62,8 +62,8 @@ export default function PrivacyPolicy() {
         <Section title="2. Quais dados coletamos">
           <ul className="list-disc space-y-1.5 pl-5">
             <li>
-              <strong className="text-slate-200">Identificação e contato:</strong> nome completo e número
-              de celular, informados no cadastro.
+              <strong className="text-slate-200">Identificação e contato:</strong> nome completo e e-mail,
+              informados no cadastro (telefone, se informado, é opcional).
             </li>
             <li>
               <strong className="text-slate-200">Credenciais de acesso:</strong> uma senha, armazenada com
@@ -90,8 +90,8 @@ export default function PrivacyPolicy() {
           <ul className="list-disc space-y-1.5 pl-5">
             <li>
               <strong className="text-slate-200">Criar e autenticar sua conta</strong> (cadastro e código de
-              verificação por SMS): execução de contrato e, no envio do código, seu consentimento ao
-              informar o celular (art. 7º, V e I).
+              verificação por e-mail): execução de contrato e, no envio do código, seu consentimento ao
+              informar o e-mail (art. 7º, V e I).
             </li>
             <li>
               <strong className="text-slate-200">Agendar e prestar o serviço</strong> escolhido, inclusive
@@ -116,10 +116,14 @@ export default function PrivacyPolicy() {
           </p>
           <ul className="list-disc space-y-1.5 pl-5">
             <li>
-              <strong className="text-slate-200">Supabase</strong> — hospedagem do banco de dados,
-              autenticação e envio do código de verificação por SMS. A Supabase pode armazenar dados em
-              servidores fora do Brasil, o que caracteriza transferência internacional (art. 33) amparada
-              pelas cláusulas contratuais do provedor.
+              <strong className="text-slate-200">Supabase</strong> — hospedagem do banco de dados e
+              autenticação. A Supabase pode armazenar dados em servidores fora do Brasil, o que
+              caracteriza transferência internacional (art. 33) amparada pelas cláusulas contratuais do
+              provedor.
+            </li>
+            <li>
+              <strong className="text-slate-200">Resend</strong> — envio do código de verificação de
+              cadastro e das notificações de status do seu agendamento por e-mail.
             </li>
           </ul>
           <p>Podemos divulgar dados caso a lei exija ou para proteger direitos da Oficina Fácil ou de terceiros.</p>

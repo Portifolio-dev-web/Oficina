@@ -2,11 +2,16 @@ import axios from "axios";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-export const sendOtp = (phone) =>
-  axios.post(`${API}/auth/send-otp`, { phone }).then((r) => r.data);
+const authHeaders = (token) => ({ headers: { Authorization: `Bearer ${token}` } });
 
-export const verifyOtp = (payload) =>
-  axios.post(`${API}/auth/verify-otp`, payload).then((r) => r.data);
+export const registerSendCode = (email) =>
+  axios.post(`${API}/auth/register/send-code`, { email }).then((r) => r.data);
+
+export const registerVerifyCode = (payload) =>
+  axios.post(`${API}/auth/register/verify-code`, payload).then((r) => r.data);
+
+export const login = (payload) =>
+  axios.post(`${API}/auth/login`, payload).then((r) => r.data);
 
 export const getMakes = () =>
   axios.get(`${API}/vehicles/makes`).then((r) => r.data);
@@ -14,13 +19,11 @@ export const getMakes = () =>
 export const getModels = (make) =>
   axios.get(`${API}/vehicles/models`, { params: { make } }).then((r) => r.data);
 
-export const createAppointment = (payload) =>
-  axios.post(`${API}/appointments`, payload).then((r) => r.data);
+export const createAppointment = (payload, token) =>
+  axios.post(`${API}/appointments`, payload, authHeaders(token)).then((r) => r.data);
 
 export const getTracking = (id) =>
   axios.get(`${API}/tracking/${id}`).then((r) => r.data);
-
-const authHeaders = (token) => ({ headers: { Authorization: `Bearer ${token}` } });
 
 // Restrita ao admin (ver backend S1): exige o token do painel.
 export const updateStage = (id, stage, token) =>
