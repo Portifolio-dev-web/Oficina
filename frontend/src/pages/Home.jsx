@@ -162,7 +162,7 @@ export default function Home() {
       </section>
 
       <footer className="border-t border-slate-800 py-8 text-center text-xs text-slate-500">
-        Oficina Fácil — Oficina Conectada · Demonstração com dados simulados
+        Oficina Fácil
         <span className="mx-2 text-slate-700">·</span>
         <Link
           to="/privacidade"
