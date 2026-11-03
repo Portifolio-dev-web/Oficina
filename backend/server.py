@@ -402,6 +402,14 @@ async def register_verify_code(body: RegisterVerifyCodeRequest, request: Request
         )
     except Exception as exc:
         logger.warning("Falha ao criar usuário após verificação de e-mail: %s", exc)
+        # O GoTrue recusa criar um usuário cujo e-mail já existe em auth.users
+        # mesmo sem profile correspondente (ex.: e-mail do admin, ou uma conta
+        # cujo profile foi apagado manualmente) — nesse caso a mensagem deixa
+        # claro o motivo em vez do genérico "não foi possível".
+        if "already" in str(exc).lower() or "registered" in str(exc).lower():
+            raise HTTPException(
+                status_code=409, detail="Este e-mail já está em uso. Faça login."
+            )
         raise HTTPException(status_code=400, detail="Não foi possível concluir o cadastro.")
 
     user_id = created.user.id
