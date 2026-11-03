@@ -355,7 +355,7 @@ comment on function public.log_booking_stage_change() is
 
 -- =============================================================================
 -- 11. TOKENS DE VERIFICAÇÃO DE E-MAIL (cadastro) — migração do fluxo de Phone
---     OTP do Supabase Auth para verificação por e-mail via Resend
+--     OTP do Supabase Auth para verificação por e-mail via SendGrid
 -- =============================================================================
 -- Guarda só o HASH do código de 6 dígitos (nunca o código em texto puro) e a
 -- validade. Diferente do Phone OTP do Supabase Auth (que criava o usuário já

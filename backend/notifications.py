@@ -2,51 +2,70 @@
 de status do agendamento).
 
 Antes, a verificação de cadastro usava o Phone OTP do Supabase Auth e cada
-mudança de etapa gerava um SMS (Twilio). Migração para e-mail: com
-RESEND_API_KEY preenchida (ver backend/.env.example), este módulo manda o
-e-mail de verdade via Resend. Sem ela — como fica por padrão neste projeto de
+mudança de etapa gerava um SMS (Twilio). Migração para e-mail via SendGrid:
+com SENDGRID_API_KEY preenchida (ver backend/.env.example), este módulo manda
+o e-mail de verdade. Sem ela — como fica por padrão neste projeto de
 demonstração —, cai no mesmo comportamento simulado de antes (só loga), para
 que o fluxo continue funcionando sem custo nem conta em um provedor real, e
 para deixar claro no log que o e-mail não saiu.
+
+SendGrid exige que o remetente (SENDGRID_FROM_EMAIL) seja verificado —
+"Single Sender Verification" (um único e-mail, sem precisar de domínio
+próprio) ou um domínio verificado — e só então aceita enviar para qualquer
+destinatário.
 """
 import asyncio
 import logging
+from email.utils import parseaddr
 
-import resend
+from sendgrid import SendGridAPIClient
 
 from settings import get_settings
 
 logger = logging.getLogger(__name__)
 
 
+def _from_field(raw: str) -> dict:
+    # Aceita "Nome <email>" ou só "email" (ver SENDGRID_FROM_EMAIL no
+    # .env.example) e converte para o formato {"email": ..., "name": ...}
+    # exigido pela API v3 da SendGrid.
+    name, email = parseaddr(raw)
+    return {"email": email, "name": name} if name else {"email": email}
+
+
 async def _send(to_email: str, subject: str, html: str, *, log_context: str) -> bool:
-    """Envia `html` para `to_email` via Resend. Retorna True se foi enviado
+    """Envia `html` para `to_email` via SendGrid. Retorna True se foi enviado
     (ou simulado), False se o envio real foi tentado e falhou. Nunca levanta
     exceção — uma falha no provedor de e-mail não pode derrubar o fluxo que a
     chamou (cadastro ou atualização de agendamento)."""
     settings = get_settings()
-    if not settings.resend_api_key:
+    if not settings.sendgrid_api_key:
         # SEGURANÇA (auditoria, item S8): nunca logar o e-mail do cliente.
         logger.info("[E-mail simulado - provedor não configurado] %s", log_context)
         return True
 
-    resend.api_key = settings.resend_api_key
+    payload = {
+        "personalizations": [{"to": [{"email": to_email}]}],
+        "from": _from_field(settings.sendgrid_from_email),
+        "subject": subject,
+        "content": [{"type": "text/html", "value": html}],
+    }
+    client = SendGridAPIClient(settings.sendgrid_api_key)
     try:
-        await asyncio.to_thread(
-            resend.Emails.send,
-            {
-                "from": settings.resend_from_email,
-                "to": [to_email],
-                "subject": subject,
-                "html": html,
-            },
-        )
-        logger.info("E-mail enviado via Resend: %s", log_context)
+        response = await asyncio.to_thread(client.send, payload)
+        if response.status_code >= 300:
+            # SEGURANÇA (auditoria, item S8): não logar o corpo da resposta —
+            # pode ecoar o e-mail do destinatário de volta no erro.
+            logger.warning(
+                "Falha ao enviar e-mail via SendGrid (status %s): %s",
+                response.status_code,
+                log_context,
+            )
+            return False
+        logger.info("E-mail enviado via SendGrid: %s", log_context)
         return True
     except Exception:
-        # SEGURANÇA (auditoria, item S8): não logar o corpo da exceção — a
-        # resposta de erro do provedor pode ecoar o e-mail do destinatário.
-        logger.warning("Falha ao enviar e-mail via Resend: %s", log_context)
+        logger.warning("Falha ao enviar e-mail via SendGrid: %s", log_context)
         return False
 
 

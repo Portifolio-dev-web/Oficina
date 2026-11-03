@@ -13,12 +13,12 @@ class Settings:
     admin_email: str
     cors_origins: list[str]
     # Envio real de e-mail (verificação de cadastro e notificação de status
-    # via Resend). Opcional de propósito: sem RESEND_API_KEY preenchida,
+    # via SendGrid). Opcional de propósito: sem SENDGRID_API_KEY preenchida,
     # notifications.send_email() cai no modo simulado (só loga), que é o
     # comportamento padrão deste projeto de demonstração — ver
     # backend/.env.example.
-    resend_api_key: str
-    resend_from_email: str
+    sendgrid_api_key: str
+    sendgrid_from_email: str
 
 
 def _require(name: str) -> str:
@@ -40,6 +40,6 @@ def get_settings() -> Settings:
         admin_username=os.environ.get("ADMIN_USERNAME", "admin"),
         admin_email=os.environ.get("ADMIN_EMAIL", "monitor.informatica25@gmail.com"),
         cors_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
-        resend_api_key=os.environ.get("RESEND_API_KEY", ""),
-        resend_from_email=os.environ.get("RESEND_FROM_EMAIL", "Oficina Fácil <onboarding@resend.dev>"),
+        sendgrid_api_key=os.environ.get("SENDGRID_API_KEY", ""),
+        sendgrid_from_email=os.environ.get("SENDGRID_FROM_EMAIL", ""),
     )

@@ -122,7 +122,7 @@ export default function PrivacyPolicy() {
               provedor.
             </li>
             <li>
-              <strong className="text-slate-200">Resend</strong> — envio do código de verificação de
+              <strong className="text-slate-200">SendGrid</strong> — envio do código de verificação de
               cadastro e das notificações de status do seu agendamento por e-mail.
             </li>
           </ul>

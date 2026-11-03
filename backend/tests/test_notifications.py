@@ -1,5 +1,5 @@
 """Teste unitário do envio de e-mail (notifications.py) — não precisa de
-Supabase nem de conta Resend real, roda sempre. Troca resend.Emails.send por
+Supabase nem de conta SendGrid real, roda sempre. Troca SendGridAPIClient por
 um fake para não bater na rede."""
 import asyncio
 
@@ -8,93 +8,114 @@ import settings
 
 
 class _FakeSettings:
-    def __init__(self, resend_api_key="", resend_from_email="Oficina Fácil <onboarding@resend.dev>"):
-        self.resend_api_key = resend_api_key
-        self.resend_from_email = resend_from_email
+    def __init__(self, sendgrid_api_key="", sendgrid_from_email="Oficina Fácil <naoresponda@example.com>"):
+        self.sendgrid_api_key = sendgrid_api_key
+        self.sendgrid_from_email = sendgrid_from_email
 
 
-class _FakeEmails:
-    """Substitui resend.Emails: grava a chamada e nunca abre uma conexão de
-    rede."""
+class _FakeResponse:
+    def __init__(self, status_code=202):
+        self.status_code = status_code
+
+
+class _FakeSendGridClient:
+    """Substitui SendGridAPIClient: grava a chamada e nunca abre uma conexão
+    de rede."""
 
     calls = []
     should_fail = False
+    next_status = 202
 
-    @classmethod
-    def send(cls, params):
-        cls.calls.append(params)
-        if cls.should_fail:
+    def __init__(self, api_key):
+        self.api_key = api_key
+
+    def send(self, payload):
+        _FakeSendGridClient.calls.append(payload)
+        if _FakeSendGridClient.should_fail:
             raise RuntimeError("Falha simulada do provedor.")
-        return {"id": "fake-email-id"}
+        return _FakeResponse(_FakeSendGridClient.next_status)
 
 
-def _patch_resend(monkeypatch, should_fail=False):
-    _FakeEmails.calls = []
-    _FakeEmails.should_fail = should_fail
-    monkeypatch.setattr(notifications.resend, "Emails", _FakeEmails)
+def _patch_sendgrid(monkeypatch, should_fail=False, status_code=202):
+    _FakeSendGridClient.calls = []
+    _FakeSendGridClient.should_fail = should_fail
+    _FakeSendGridClient.next_status = status_code
+    monkeypatch.setattr(notifications, "SendGridAPIClient", _FakeSendGridClient)
 
 
 def test_send_status_email_without_credentials_is_simulated_and_does_not_hit_network(monkeypatch):
     monkeypatch.setattr(notifications, "get_settings", lambda: _FakeSettings())
-    _patch_resend(monkeypatch)
+    _patch_sendgrid(monkeypatch)
 
     ok = asyncio.run(notifications.send_status_email("cliente@example.com", "Olá!", booking_id="AF-000001"))
 
     assert ok is True
-    assert _FakeEmails.calls == []  # nenhuma chamada à API foi feita
+    assert _FakeSendGridClient.calls == []  # nenhuma chamada à API foi feita
 
 
-def test_send_status_email_with_credentials_calls_resend(monkeypatch):
+def test_send_status_email_with_credentials_calls_sendgrid(monkeypatch):
     monkeypatch.setattr(
-        notifications, "get_settings", lambda: _FakeSettings(resend_api_key="re_test_123")
+        notifications, "get_settings", lambda: _FakeSettings(sendgrid_api_key="SG.test_123")
     )
-    _patch_resend(monkeypatch)
+    _patch_sendgrid(monkeypatch)
 
     ok = asyncio.run(
         notifications.send_status_email("cliente@example.com", "Seu carro está pronto.", booking_id="AF-000002")
     )
 
     assert ok is True
-    [call] = _FakeEmails.calls
-    assert call["to"] == ["cliente@example.com"]
-    assert "Seu carro está pronto." in call["html"]
+    [call] = _FakeSendGridClient.calls
+    assert call["personalizations"] == [{"to": [{"email": "cliente@example.com"}]}]
+    assert call["from"] == {"email": "naoresponda@example.com", "name": "Oficina Fácil"}
+    assert "Seu carro está pronto." in call["content"][0]["value"]
     assert "AF-000002" in call["subject"]
 
 
-def test_send_status_email_returns_false_without_raising_when_resend_fails(monkeypatch):
+def test_send_status_email_returns_false_without_raising_when_sendgrid_fails(monkeypatch):
     monkeypatch.setattr(
-        notifications, "get_settings", lambda: _FakeSettings(resend_api_key="re_test_123")
+        notifications, "get_settings", lambda: _FakeSettings(sendgrid_api_key="SG.test_123")
     )
-    _patch_resend(monkeypatch, should_fail=True)
+    _patch_sendgrid(monkeypatch, should_fail=True)
 
     ok = asyncio.run(notifications.send_status_email("cliente@example.com", "Oi", booking_id="AF-000003"))
 
     assert ok is False
 
 
+def test_send_status_email_returns_false_on_non_2xx_status(monkeypatch):
+    monkeypatch.setattr(
+        notifications, "get_settings", lambda: _FakeSettings(sendgrid_api_key="SG.test_123")
+    )
+    _patch_sendgrid(monkeypatch, status_code=403)
+
+    ok = asyncio.run(notifications.send_status_email("cliente@example.com", "Oi", booking_id="AF-000004"))
+
+    assert ok is False
+
+
 def test_send_verification_email_includes_code(monkeypatch):
     monkeypatch.setattr(
-        notifications, "get_settings", lambda: _FakeSettings(resend_api_key="re_test_123")
+        notifications, "get_settings", lambda: _FakeSettings(sendgrid_api_key="SG.test_123")
     )
-    _patch_resend(monkeypatch)
+    _patch_sendgrid(monkeypatch)
 
     ok = asyncio.run(notifications.send_verification_email("cliente@example.com", "123456"))
 
     assert ok is True
-    [call] = _FakeEmails.calls
-    assert "123456" in call["html"]
+    [call] = _FakeSendGridClient.calls
+    assert "123456" in call["content"][0]["value"]
 
 
-def test_settings_default_resend_vars_to_empty_string(monkeypatch):
-    # Sem RESEND_API_KEY no ambiente, get_settings() não deve quebrar (as
+def test_settings_default_sendgrid_vars_to_empty_string(monkeypatch):
+    # Sem SENDGRID_API_KEY no ambiente, get_settings() não deve quebrar (as
     # outras variáveis obrigatórias de Supabase continuam exigidas normalmente).
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
     monkeypatch.setenv("SUPABASE_ANON_KEY", "anon")
     monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "service")
-    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    monkeypatch.delenv("SENDGRID_API_KEY", raising=False)
     settings.get_settings.cache_clear()
 
     result = settings.get_settings()
 
-    assert result.resend_api_key == ""
+    assert result.sendgrid_api_key == ""
     settings.get_settings.cache_clear()

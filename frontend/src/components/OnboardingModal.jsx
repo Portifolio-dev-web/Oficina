@@ -78,7 +78,7 @@ export default function OnboardingModal({ open, onClose, onSuccess }) {
   const formValid =
     form.name.trim().length >= 3 &&
     isValidEmail(form.email) &&
-    form.password.length >= 4 &&
+    form.password.length >= 6 &&
     form.make &&
     form.model;
 
@@ -344,7 +344,7 @@ export default function OnboardingModal({ open, onClose, onSuccess }) {
                           data-testid="input-password"
                           type="password"
                           className={inputCls}
-                          placeholder="Mínimo 4 caracteres"
+                          placeholder="Mínimo 6 caracteres"
                           autoComplete="new-password"
                           value={form.password}
                           onChange={set("password")}

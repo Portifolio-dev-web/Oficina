@@ -38,10 +38,21 @@ logger = logging.getLogger(__name__)
 # histórico de rastreamento) passa pelas tabelas criadas em supabase_schema.sql.
 # A autenticação de clientes usa e-mail + senha do Supabase Auth: o cadastro
 # passa por um código de verificação de 6 dígitos enviado por e-mail via
-# Resend (/auth/register/send-code, /auth/register/verify-code — código
+# SendGrid (/auth/register/send-code, /auth/register/verify-code — código
 # guardado com hash em email_verification_tokens, ver supabase_schema.sql); o
 # login (/auth/login) é direto com sign_in_with_password, como o do
 # administrador (profiles.role = 'admin', ver backend/scripts/create_admin.py).
+
+
+def _first_or_none(query) -> Optional[dict]:
+    """Substitui `.maybe_single()`: nesta versão do postgrest-py (2.33.0),
+    `.maybe_single().execute()` devolve `None` diretamente (em vez de um
+    objeto com `.data = None`) quando a busca não encontra nenhuma linha —
+    quebra com `AttributeError: 'NoneType' object has no attribute 'data'`
+    em vez de permitir o 404/401 esperado. `.limit(1)` sempre devolve uma
+    lista (vazia ou com um item), nunca `None`."""
+    rows = query.limit(1).execute().data
+    return rows[0] if rows else None
 
 
 @lru_cache
@@ -95,13 +106,10 @@ def _booking_to_dict(booking: dict, services: List[dict], history: List[dict]) -
 
 def _fetch_appointment(booking_id: str) -> Optional[dict]:
     db = get_admin_client()
-    booking = (
+    booking = _first_or_none(
         db.table("bookings")
         .select("*, vehicles(make,model,plate), profiles(name,email)")
         .eq("id", booking_id)
-        .maybe_single()
-        .execute()
-        .data
     )
     if not booking:
         return None
@@ -182,13 +190,8 @@ def _get_latest_vehicle(owner_id: str) -> Optional[dict]:
 
 def _get_profile_by_email(email: str) -> Optional[dict]:
     db = get_admin_client()
-    return (
-        db.table("profiles")
-        .select("id,name,email")
-        .eq("email", email)
-        .maybe_single()
-        .execute()
-        .data
+    return _first_or_none(
+        db.table("profiles").select("id,name,email").eq("email", email)
     )
 
 
@@ -258,7 +261,12 @@ class RegisterVerifyCodeRequest(BaseModel):
     email: EmailStr
     code: str = Field(..., max_length=10)
     name: str = Field(..., max_length=120)
-    password: str = Field(..., min_length=4, max_length=128)
+    # SEGURANÇA/CORREÇÃO: o Supabase Auth exige mínimo de 6 caracteres por
+    # padrão em admin.create_user() — com min_length=4 aqui, o Pydantic
+    # aceitava a senha, o código era consumido, e só então a criação do
+    # usuário falhava no Supabase ("Password should be at least 6
+    # characters."), desperdiçando o código já verificado.
+    password: str = Field(..., min_length=6, max_length=128)
     vehicle: Optional[VehicleInput] = None
 
 
@@ -331,8 +339,8 @@ async def register_send_code(body: RegisterSendCodeRequest, request: Request):
         )
 
     response = {"success": True, "message": "Código enviado para seu e-mail!"}
-    if not get_settings().resend_api_key:
-        # MODO DEMONSTRAÇÃO: sem RESEND_API_KEY, nenhum e-mail de verdade sai
+    if not get_settings().sendgrid_api_key:
+        # MODO DEMONSTRAÇÃO: sem SENDGRID_API_KEY, nenhum e-mail de verdade sai
         # (ver notifications.send_verification_email) — devolver o código na
         # resposta é o que permite o fluxo (e os testes de integração)
         # continuarem funcionáveis sem conta num provedor real, igual ao
@@ -439,7 +447,7 @@ async def login(body: LoginRequest, request: Request):
         raise HTTPException(status_code=401, detail="E-mail ou senha inválidos.")
 
     db = get_admin_client()
-    profile = db.table("profiles").select("name,email").eq("id", res.user.id).maybe_single().execute().data
+    profile = _first_or_none(db.table("profiles").select("name,email").eq("id", res.user.id))
     if not profile:
         raise HTTPException(status_code=401, detail="E-mail ou senha inválidos.")
 
@@ -465,9 +473,7 @@ async def get_makes():
 @api_router.get("/vehicles/models")
 async def get_models(make: str):
     db = get_admin_client()
-    make_row = (
-        db.table("vehicle_makes").select("id").eq("name", make).maybe_single().execute().data
-    )
+    make_row = _first_or_none(db.table("vehicle_makes").select("id").eq("name", make))
     if not make_row:
         raise HTTPException(status_code=404, detail="Marca não encontrada.")
     rows = (
@@ -560,9 +566,7 @@ async def update_status(
     # que só o admin deveria alterar a etapa; agora isso é aplicado de fato.
     require_admin(authorization)
     db = get_admin_client()
-    booking = (
-        db.table("bookings").select("stage_index").eq("id", appointment_id).maybe_single().execute().data
-    )
+    booking = _first_or_none(db.table("bookings").select("stage_index").eq("id", appointment_id))
     if not booking:
         raise HTTPException(status_code=404, detail="Agendamento não encontrado.")
 
@@ -601,7 +605,7 @@ def require_admin(authorization: Optional[str]) -> str:
     if not user:
         raise HTTPException(status_code=401, detail="Acesso restrito ao administrador.")
 
-    profile = db.table("profiles").select("role").eq("id", user.id).maybe_single().execute().data
+    profile = _first_or_none(db.table("profiles").select("role").eq("id", user.id))
     if not profile or profile.get("role") != "admin":
         raise HTTPException(status_code=401, detail="Acesso restrito ao administrador.")
     return user.id
@@ -624,8 +628,8 @@ async def admin_login(body: AdminLoginRequest, request: Request):
         raise HTTPException(status_code=401, detail="Usuário ou senha inválidos.")
 
     db = get_admin_client()
-    profile = (
-        db.table("profiles").select("role,name,email").eq("id", res.user.id).maybe_single().execute().data
+    profile = _first_or_none(
+        db.table("profiles").select("role,name,email").eq("id", res.user.id)
     )
     if not profile or profile.get("role") != "admin":
         raise HTTPException(status_code=401, detail="Usuário ou senha inválidos.")
@@ -749,7 +753,7 @@ async def delete_mechanic(mechanic_id: str, authorization: Optional[str] = Heade
         raise HTTPException(status_code=404, detail="Mecânico não encontrado.")
 
     db = get_admin_client()
-    mechanic = db.table("mechanics").select("id").eq("id", mechanic_id).maybe_single().execute().data
+    mechanic = _first_or_none(db.table("mechanics").select("id").eq("id", mechanic_id))
     if not mechanic:
         raise HTTPException(status_code=404, detail="Mecânico não encontrado.")
 
@@ -781,7 +785,7 @@ async def toggle_mechanic(mechanic_id: str, authorization: Optional[str] = Heade
         raise HTTPException(status_code=404, detail="Mecânico não encontrado.")
 
     db = get_admin_client()
-    mechanic = db.table("mechanics").select("*").eq("id", mechanic_id).maybe_single().execute().data
+    mechanic = _first_or_none(db.table("mechanics").select("*").eq("id", mechanic_id))
     if not mechanic:
         raise HTTPException(status_code=404, detail="Mecânico não encontrado.")
 

@@ -6,7 +6,7 @@ verdade (API_BASE_URL) ligado a um projeto Supabase com o schema e o seed de
 catálogo aplicados (supabase_schema.sql + supabase_seed.sql).
 
 Os testes de cadastro/login não dependem de nenhuma conta num provedor de
-e-mail real: sem RESEND_API_KEY configurada, POST /auth/register/send-code
+e-mail real: sem SENDGRID_API_KEY configurada, POST /auth/register/send-code
 devolve o próprio código na resposta (modo demonstração, ver
 backend/server.py e backend/.env.example), e é isso que os testes usam. Cada
 teste usa um e-mail aleatório (uuid4) para não colidir com execuções
@@ -62,7 +62,7 @@ def _register(session, email, *, name="Teste Silva", password="senha-teste-1234"
     r = session.post(f"{API}/auth/register/send-code", json={"email": email})
     assert r.status_code == 200, r.text
     code = r.json().get("code")
-    assert code, "RESEND_API_KEY está configurada: sem o modo demonstração, não há como ler o código nos testes."
+    assert code, "SENDGRID_API_KEY está configurada: sem o modo demonstração, não há como ler o código nos testes."
 
     payload = {"email": email, "code": code, "name": name, "password": password}
     if vehicle is not None:
